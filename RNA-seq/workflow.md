@@ -9,7 +9,10 @@ Am J Respir Cell Mol Biol. 2018;59(2):145-157. doi:10.1165/rcmb.2017-0430TR
 
 ## wet lab process
 > prepare samples, and extract RNA
-in this step, researchers often use the ratios of 28s/18s ribosomal bands to estimates sample 
+in this step, researchers often use the ratios of 28s/18s ribosomal bands to estimates sample intergrity.
+> creation of an RNA-seq library
+isolating the target RNA molecule, and convert RNA to cDNA, ligating with sequencing
+adapter, there are multiple methods for library design based on different needs.
 > 
 > converting RNA to cDNA
 > 
