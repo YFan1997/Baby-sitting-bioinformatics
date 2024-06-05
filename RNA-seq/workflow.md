@@ -79,6 +79,36 @@ done
 
 # run this script
 bash rename.sh
+```
+### 2.investigae data
+here we mainly use fastqc method
+```bash
+mkdir fastqc_output
+nohup parallel fastqc {}.fastq -o fastqc_output/ :::: mapping_list &
+```
+got html file, check adapter content, if they are green, ready for next step, if not consider trimming method such as cutadapt,trimmomatic etc.
+
+### 3.alignment
+in this experiment, the research are using mm10 for reference gene
+```bash
+#download and unzip reference genome
+wget http://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.fa.gz
+gunzip mm10.fa.gz
+# download and unzip annotation
+wget ftp://ftp.ensembl.org/pub/release-99/gtf/mus_musculus/Mus_musculus.GRCm38.99.gtf.gz
+gunzip Mus_musculus.GRCm38.99.gtf.gz
+
+# build index by hisat2
+# again, there are many software for doing the similar job 
+
+nohup hisat2-build mm10.fa mm10_index &
+
+#some small step make life easier
+# cp mapping_list alignment
+# mv mapping_list name
+# alignment
+cd /mnt/pv_compute/yifan/practice/RNA-seq/raw_data/alignment
+nohup parallel "hisat2 -p 8 -x mm10_index -U {}.fastq -S sam/{}.sam" :::: name &
 
 
 
