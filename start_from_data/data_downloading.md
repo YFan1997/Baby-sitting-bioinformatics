@@ -1,6 +1,6 @@
-there are many open source for data capturing, here I am going to introduce some popular source.
+# there are many open source for data capturing, here I am going to introduce some popular source.
 
-# NCBI would be one of the most popular website
+## NCBI would be one of the most popular website
 ## directly download by clicking the link is always a choice
 ## for multiple files downloading,let's use a quick and easy way 
     for example, we need to download several files named:
