@@ -108,7 +108,104 @@ nohup hisat2-build mm10.fa mm10_index &
 # mv mapping_list name
 # alignment
 cd /mnt/pv_compute/yifan/practice/RNA-seq/raw_data/alignment
-nohup parallel "hisat2 -p 8 -x mm10_index -U {}.fastq -S sam/{}.sam" :::: name &
+nohup parallel "hisat2 -p 8 -x path/to/mm10_index -U path/to/{}.fastq -S path/to/sam/{}.sam" :::: name &
+
+# now we have sam files, we can convert it to bam and sort & index them
+```
+let's check what changed by each step, use N01_AM_Naive.sam as example
+here is content without header
+
+```bash
+less N01_AM_Naive.sam
+SRR7457559.3    4       *       0       0       *       *       0       0       GGGAGGTTCCAGCCAGAGGCTGGAACCTCCCGCATAT   AAAAAEEEAEAEAEEE/EEAEAE/EEEEEEEE<AA/E    YT:Z:UU
+SRR7457559.5    0       chr2    27447149        60      75M     *       0       0       CCATTCGGCAGCCTCAAAAACAACAAACCCAACAGGACCTTCTGTTAGACTCTGTATATTATTACTTTTTACAAT      AAAAAEEEEEEEEEEEEEEEEEEEEE6EEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEE     AS:i:0  XN:i:0  XM:i:0  XO:i:0   XG:i:0  NM:i:0  MD:Z:75 YT:Z:UU NH:i:1
+```
+```bash
+mkdir bam
+mkdir sorted_bam
+mkdir index_bam
+nohup parallel -P6 "samtools view -bS sam/{}.sam > bam/{}.bam" :::: name &
+nohup parallel -P6 "samtools sort bam/{}.bam -o sorted_bam/{}_sorted.bam" :::: name &
+nohup parallel -P6 "samtools index sorted_bam/{}_sorted.bam" :::: name &
+
+```
+check bam content, same with sam file
+```bash
+samtools view N01_AM_Naive.bam | head -n 10
+
+SRR7457559.3	4	*	0	0	*	*	0	0	GGGAGGTTCCAGCCAGAGGCTGGAACCTCCCGCATAT	AAAAAEEEAEAEAEEE/EEAEAE/EEEEEEEE<AA/E	YT:Z:UU
+SRR7457559.5	0	chr2	27447149	60	75M	*	0	0	CCATTCGGCAGCCTCAAAAACAACAAACCCAACAGGACCTTCTGTTAGACTCTGTATATTATTACTTTTTACAAT	AAAAAEEEEEEEEEEEEEEEEEEEEE6EEEEEEEEEEAEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEEAEE	AS:i:0	XN:i:0	XM:i:0	XO:i:0	XG:i:0	NM:i:0	MD:Z:75	YT:Z:UU	NH:i:1
+```
+
+check sorted bam
+```bash
+samtools view N01_AM_Naive_sorted.bam | head -n 10
+# sorted by the start position of the chromsomes
+SRR7457559.5779826	272	chr1	3015214	1	75M	*	0	0	TATGGGATGGATCCCTGCATATGGCAATCACTAGATGGTCCATCCTTTTGTCACAGCTCCAAATTTTGTCTCTGT	EAEEEAE//A///</EEEEEEEAAEEEEEA/EAEAEEAAEEEEEEEEEEEEAEEAE<EEAAEEEEEEEEEAAAA/	AS:i:0	ZS:i:0	XN:i:0	XM:i:0	XO:i:0	XG:i:0	NM:i:0	MD:Z:75	YT:Z:UU	NH:i:5
+SRR7457559.2409229	256	chr1	3016283	1	74M	*	0	0	TCGAGGCTTTTCCCTACTTTCTCCTCTGTAAGTTTCAGTGTCTCTGGTTTTATGTGGAGTTCCTTAATCCACTT	6AAAAEAEAEEEEEAEEEEAEEEE/EEEEAAEEEEEEEEEEEEEEAEEEEEEEEE/EEEEEEEEEEEEAEEEEE	AS:i:0	ZS:i:0	XN:i:0	XM:i:0	XO:i:0	XG:i:0	NM:i:0	MD:Z:74	YT:Z:UU	NH:i:5
+```
+
+for indexed bam file, we will get .bai file, which is binary format that we can not directly investigate them.
+```bash
+#we can use
+samtools idxstats N01_AM_Naive_sorted.bam
+# to check the alignment statistics
+### part of the content 
+chr1	195471971	1487358	0
+chr10	130694993	1565220	0
+chr11	122082543	1848874	0
+chr12	120129022	787946	0
+chr13	120421639	823018	0
+chr14	124902244	834054	0
+chr15	104043685	926670	0
+chr16	98207768	630159	0
+chr17	94987271	1165790	0
+chr18	90702639	466556	0
+chr19	61431566	1114124	0
+chr1_GL456210_random	169725	550	0
+chr1_GL456211_random	241735	818	0
+###
+```
+the second column is the length of reference sequence(bp) while the third column is the number of mapped reads to this reference sequence, the fourth column is the number of unmapped reads, which is 0 in our file, indicates there are no unmapped reads in this bam file.
+
+### 4.Quantify gene expression
+before we do the quantification, let's check our annotation file
+
+```bash
+head Mus_musculus.GRCm38.99.gtf
+#!genome-build GRCm38.p6
+#!genome-version GRCm38
+#!genome-date 2012-01
+#!genome-build-accession NCBI:GCA_000001635.8
+#!genebuild-last-updated 2019-09
+1	havana	gene	3073253	3074322	.	+	.	gene_id "ENSMUSG00000102693"; gene_version "1"; gene_name "4933401J01Rik"; gene_source "havana"; gene_biotype "TEC";
+1	havana	transcript	3073253	3074322	.	+	.	gene_id "ENSMUSG00000102693"; gene_version "1"; transcript_id "ENSMUST00000193812"; transcript_version "1"; gene_name "4933401J01Rik"; gene_source "havana"; gene_biotype "TEC"; transcript_name "4933401J01Rik-201"; transcript_source "havana"; transcript_biotype "TEC"; tag "basic"; transcript_support_level "NA";
+```
+it records the information of mm10 annotation, havana is the project name, we can ignore for now, second column is feature type, 3rd and 4th column is the start and end position of this feature, . + . mean score, strand and frame, which score and frame is not applicable here. the last column contains gene information which could be useful in the further analyze.
+
+let's do feature count based on bam file, align reads number to each gene id.
+this article have the detailed information of featurecounts algorithm: https://academic.oup.com/bioinformatics/article/30/7/923/232889
+
+```bash
+nohup featureCounts -T 8 -t exon -g gene_id -a Mus_musculus.GRCm38.99.gtf -o counts.txt sorted_bam/*.bam &
+```
+
+let's check out counts.txt
+it's a matrix which contains reads of each sample in each geneid (we specify the type of exon, so this gene ids are exons)
+
+```bash
+Geneid  Chr     Start   End     Strand  Length  sorted_bam/N01_AM_Naive_sorted.bam      sorted_bam/N02_AM_Naive_sorted.bam      sorted_bam/N03_AM_Naive_sorted.bam      sorted_bam/N04_AM_Naive_sorted.bam
+        sorted_bam/R01_AM_Allo2h_sorted.bam     sorted_bam/R02_AM_Allo2h_sorted.bam     sorted_bam/R03_AM_Allo2h_sorted.bam     sorted_bam/R04_AM_Allo2h_sorted.bam     sorted_bam/R05_AM_Allo24h_sorted.bam
+        sorted_bam/R06_AM_Allo24h_sorted.bam    sorted_bam/R07_AM_Allo24h_sorted.bam    sorted_bam/R08_AM_Allo24h_sorted.bam
+ENSMUSG00000102693      1       3073253 3074322 +       1070    0       0       0       0       0       0       0       0       0       0       0       0
+ENSMUSG00000064842      1       3102016 3102125 +       110     0       0       0       0       0       0       0       0       0       0       0       0
+```
+
+### 6.further analyze 
+now we are ready for using R to conduct further data visualization
+
+
+
 
 
 
