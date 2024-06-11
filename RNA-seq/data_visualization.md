@@ -15,6 +15,8 @@ library(EnhancedVolcano)
 ```
 we actually mainly use DESeq2, but other packages are also very useful for deeper understanding and management of our result.
 In DESeq2, there are many embeded algorithms which users can directly use, but, I really want to digging in the meaning of these parameters, we will find these would help a lot in understanding plots and make our own plots based on specific needs.
+
+### 2.Understanding some concepts
 > log2FC
 
 
