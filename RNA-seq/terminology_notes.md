@@ -1,18 +1,7 @@
-## let's start doing data visulaization by R
-### 1. load necessary r packages
-```{r}
-# BiocManager::install("DESeq2")
-# BiocManager::install("pheatmap")
-# BiocManager::install("EnhancedVolcano")
-# BiocManager::install("edgeR")
-# BiocManager::install(c("tximport","readr","biomaRt"))
-library(DESeq2)
-library(edgeR)
-library(tximport)
-library(pheatmap)
-library(biomaRt)
-library(EnhancedVolcano)
-```
+## concepts and type of analysis
+
+### 1. R packages
+
 we actually mainly use DESeq2, but other packages are also very useful for deeper understanding and management of our result.
 In DESeq2, there are many embeded algorithms which users can directly use, but, I really want to digging in the meaning of these parameters, we will find these would help a lot in understanding plots and make our own plots based on specific needs.
 
@@ -21,6 +10,12 @@ In DESeq2, there are many embeded algorithms which users can directly use, but, 
 
 
 this parameter stands for log2 fold change. firstly, fold change measures how much quantity changes between two conditions.let's say condition A in gene x's expression level(read count) is a, and condition B in gene x' expression level(read count) is b, then the fold change will be b/a, the log2FC will be log2(b/a). Why using log2, as it could make data symmetric, as if b = a, log2(b/a) = 0, etc.  this concept will help us understanding plotMA
+
+> pvalue and padj
+
+in the result generated from DESeq package, we can extract the result easily by results() function. the pvalue infers the statistical significance of the observed difference in expression for a gene between conditions being compared. usually used Wald test; the padj is adjusted pvalue, when we testing thousands of genes, some may just appear siginificant by chance, in DESeq2, it uses Benjamini-Hochberg procedure to adjust p-values, which ranks p-values and adjust to control false discorvery rate. so in some circumstances, padj is more reliable, and we may set threshold for both pvalue and padj.
+
+
 
 > data transformation: vst, rlog, ntd
 
@@ -46,7 +41,28 @@ this parameter is to calculate the elucidean distance between samples, after obt
 
 it stands for principle component analysis, which is based on mathematical calculation based on covariance matrix, thankfully, the embeded programming do all these calculation for us, but it's always good and worth to understand what the programming is doing. In summary, it peaks the most siginificant PC to plot the graph, in most cases, the PC1, PC2 capture most of the variantion in the data. When we get the PCA plot, the similar sample tend to clustring together. Very easy for us to interpret the plot.
 
+## 3.Understanding analysis
+> GO analysis
 
+
+GO stands for gene ontology, which is powerful for categorize and interpret the roles of genes. There are several components of gene function : BP (biological processes), CC (cellular components), MF (molecular functions). It's an enrichment analysis.
+
+
+
+> GSEA analysis
+
+
+after conducting gseGO, the enrichment score (ES) will be calcuted, which is reflect the degree of a gene being overrepresent, for simply understanding, positive score means upregulated, which can be called activated gene, wthile the negetive score means downregulated, which can be called suppressed gene. NES stands for normalized enrichment score, which conduct a normalization through gene sets for comparing. 
+
+> KEGG analysis
+
+
+KEGG stands for kyoto encyclopedia of genes and genomes, which contains several database to help understaning pathway, protein information, when we doing KEGG analysis, we actually doing KEGG gene enrichment analysis, to identify active biological process based on these database annotation. 
+
+> Pathview
+
+
+This method is used to visualize gene or pathway from KEGG pathways. we will take a look at it later
 
 
 
