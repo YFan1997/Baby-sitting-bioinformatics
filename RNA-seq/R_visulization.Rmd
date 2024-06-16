@@ -1,0 +1,444 @@
+# RNA-Seq baby-sitting Yifan
+```{r, echo= FALSE,message=FALSE} 
+setwd("/Users/yifan/Desktop/git_hub_content/RNA_seq/")
+# BiocManager::install("DESeq2")
+# BiocManager::install("pheatmap")
+# BiocManager::install("EnhancedVolcano")
+# BiocManager::install("edgeR")
+# BiocManager::install(c("tximport","readr","biomaRt"))
+# BiocManager::install(c("clusterProfiler", "org.Mm.eg.db", "DOSE"),force = TRUE)
+# BiocManager::install("pathview")
+# BiocManager::install("enrichplot")
+# BiocManager::install("AnnotationHub")
+library(ggplot2)
+library(clusterProfiler)
+library(enrichplot)
+library(DESeq2)
+library(edgeR)
+library(tximport)
+library(pheatmap)
+library(biomaRt)
+library(EnhancedVolcano)
+library(clusterProfiler)
+library(org.Mm.eg.db)
+library(DOSE)
+library(pathview)
+library(dplyr)
+library(reshape2)
+library(tidyr)
+```
+
+### filter the counts.txt to counts_filter.txt, as we only need the read number for further analyze
+
+
+```{r}
+counts = read.table("filter_star_counts.txt", header = TRUE,row.names = 1)
+
+new_colnames <- c(
+                  "N01", "N02", "N03", "N04", 
+                  "A2_R01", "A2_R02", "A2_R03", "A2_R04", 
+                  "A24_R01", "A24_R02", "A24_R03", "A24_R04")
+
+colnames(counts) = new_colnames
+# colnames(counts)
+conditions <- factor(c(rep("Naive", 4), rep("Allo2h", 4), rep("Allo24h", 4)))
+coldata <- data.frame(row.names=colnames(counts), condition=conditions)
+# coldata
+
+# check, suppose to get TRUE,indicates alignment between design and real data
+all(rownames(coldata) %in% colnames(counts))
+rownames(coldata) == colnames(counts)
+
+# design DESeq matrix
+dds = DESeqDataSetFromMatrix(countData = counts,
+                             colData = coldata,
+                             design = ~ condition)
+
+dds = DESeq(dds)
+length_table = read.table("S2_STAR2_practice_featurecounts.txt",  row.names = 1, header = TRUE, sep = "\t")
+# head(length_table)
+mcols(dds)$basepairs = length_table[rownames(dds),"Length"]
+
+normalized_counts <- counts(dds, normalized = TRUE)
+
+cpm_values <- cpm(normalized_counts)
+
+gene_lengths_kb <- mcols(dds)$basepairs / 1000
+
+# Function to calculate RPKM from CPM and gene lengths
+calculate_rpkm_from_cpm <- function(cpm_values, gene_lengths_kb) {
+  rpkm <- sweep(cpm_values, 1, gene_lengths_kb, "/")
+  return(rpkm)
+}
+
+
+rpkm <- calculate_rpkm_from_cpm(cpm_values, gene_lengths_kb)
+
+
+log2_rpkm = log2(rpkm+1)
+
+
+
+```
+## PCA and pearson
+```{r}
+pca <- prcomp(t(log2_rpkm))
+
+# PCA from rpkm normalized data
+
+pca_data <- data.frame(PC1 = pca$x[,1], PC2 = pca$x[,2], condition = conditions)
+ggplot(pca_data, aes(PC1, PC2, color = condition)) +
+  geom_point(size = 3) +
+  ggtitle("PCA of Alveolar Macrophage Samples") +
+  xlab(paste0("PC1: ", round(summary(pca)$importance[2,1] * 100, 1), "% variance")) +
+  ylab(paste0("PC2: ", round(summary(pca)$importance[2,2] * 100, 1), "% variance"))
+
+vsd = vst(dds,blind = FALSE)
+## another PCA plot
+pcaData <- plotPCA(vsd, intgroup="condition", returnData=TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+ggplot(pcaData, aes(PC1, PC2, color=condition)) +
+  geom_point(size=3) +
+  xlab(paste0("PC1: ",percentVar[1],"% variance")) +
+  ylab(paste0("PC2: ",percentVar[2],"% variance")) + 
+  coord_fixed()
+
+# Compute Pearson correlation
+cor_matrix <- cor(rpkm, method = "pearson")
+
+# Create correlation pearson heatmap
+pheatmap(cor_matrix, 
+         clustering_distance_rows = "correlation", 
+         clustering_distance_cols = "correlation", 
+         display_numbers = TRUE, 
+         fontsize = 7,
+         main = "Pearson's Correlation Heatmap")
+# compute sample to sample distance
+sampleDists = dist(t(assay(vsd)))
+
+# print(sampleDists)
+
+library("RColorBrewer")
+sampleDistMatrix <- as.matrix(sampleDists)
+
+# sample to sampe distance plot
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows=sampleDists,
+         clustering_distance_cols=sampleDists,
+         col=colors)
+
+
+
+```
+## Filtering out Noise
+```{r}
+rpkm_df = as.data.frame(rpkm)
+cutoffs = seq(0, 10, by=0.25)
+num_genes_above_cutoff = sapply(cutoffs, function(cutoff) {
+  colSums(rpkm_df > cutoff)
+})
+
+# Convert the results to a data frame and transpose it
+num_genes_above_cutoff_df = as.data.frame(t(num_genes_above_cutoff))
+
+# Set the column names of the transposed data frame
+colnames(num_genes_above_cutoff_df) = colnames(rpkm_df)
+
+
+# Add the cutoff values as a new column
+num_genes_above_cutoff_df$Cutoff = cutoffs
+
+# Reshape the data frame to long format for plotting
+df_num_melted = melt(num_genes_above_cutoff_df, id.vars = "Cutoff", variable.name = "Sample", value.name = "Number_of_Genes")
+
+# Plot the number of genes above different cutoffs
+ggplot(df_num_melted, aes(x = Cutoff, y = Number_of_Genes, color = Sample)) +
+  geom_line() +
+  geom_point() +
+  theme_minimal() +
+  xlab("RPKM Cutoff") +
+  ylab("Number of Genes") +
+  ggtitle("Number of Genes Above Different RPKM Cutoffs")
+
+raw_counts = as.data.frame(normalized_counts)
+plot(log2(rpkm_df$N01 + 1), log2(rpkm_df$N03+1),title("N1 vs N3"))
+
+# set filter threshold as rpkm = 1
+
+keep = (rowSums(rpkm) >= 6) 
+dds_filtered <- dds[keep,]
+dds_filtered
+
+```
+
+##MA plot
+```{r}
+res_1 = results(dds_filtered, contrast =c ("condition","Allo2h","Naive"))
+
+# use plotMA function
+DESeq2::plotMA(res_1, ylim = c(-5, 5))
+
+# use ggplot for beautiful plot
+res_df <- as.data.frame(res_1)
+
+
+# Add a column for color based on log2FoldChange and threshold of padj
+res_df$color <- ifelse(res_df$padj < 0.1, ifelse(res_df$log2FoldChange < 0, "red", "blue"), "grey")
+res_df$logBaseMean <- log2(res_df$baseMean + 1)
+# Add a column for log-transformed baseMean
+
+
+
+ggplot(res_df, aes(x =logBaseMean, y = log2FoldChange, color = color)) +
+  geom_point(alpha = 0.4) +
+  ylim(c(-5, 5)) +
+  scale_color_identity() +
+  xlab("Average log2 baseMean") +
+  ylab("Log2 Fold Change") +
+  ggtitle("MA Plot with Negative Log2 Fold Change in Red") +
+  theme(legend.position = "none")
+
+```
+## Volcanol plot
+```{r}
+
+res1 = results(dds,contrast = c("condition","Naive","Allo2h"))
+p <- EnhancedVolcano(res_1,
+                     lab = rownames(res_1),
+                     title = "Naive vs.Allo2h",
+                     x = 'log2FoldChange',
+                     y = 'pvalue',
+                     pointSize = 2.0,
+                     labSize = 4.0)
+print(p)
+
+```
+
+## ANOVA
+
+```{r}
+# dds_filtered 
+num_genes = length(dds_filtered)
+num_genes
+anova_table = as.data.frame(counts(dds_filtered))
+anova_table$Gene = rownames(anova_table)
+# head(anova_table)
+Naive = as.data.frame(anova_table[,c("Gene","N01","N02","N03","N04")])
+A2 = as.data.frame(anova_table[,c("Gene","A2_R01","A2_R02","A2_R03","A2_R04")])
+A24 = as.data.frame(anova_table[,c("Gene","A24_R01","A24_R02","A24_R03","A24_R04")])
+
+Naive_long = melt(Naive, varnames = c("Gene", "Sample"), value.name = "Expression") 
+A2_long = melt(A2, varnames = c("Gene", "Sample"), value.name = "Expression")
+A24_long = melt(A24, varnames = c("Gene", "Sample"), value.name = "Expression")
+
+
+Naive_long$Group = "Naive"
+
+A24_long$Group = "A24"
+
+A2_long$Group = "A2"
+
+all_long = bind_rows(Naive_long, A2_long,A24_long)
+
+
+# Function to perform ANOVA for a single gene
+perform_anova = function(df) {
+  aov_result = aov(Expression ~ Group, data = df)
+  p_value = summary(aov_result)[[1]]["Group", "Pr(>F)"]
+  return(p_value)
+}
+
+# Initialize a data frame to store results
+anova_results = data.frame(Gene = character(), p_value = numeric(), stringsAsFactors = FALSE)
+
+# Loop through each gene and perform ANOVA
+
+for (gene in unique(all_long$Gene)) {
+  gene_data = all_long %>% filter(Gene == gene)
+  p_value <- perform_anova(gene_data)
+  anova_results <- rbind(anova_results, data.frame(Gene = gene, p_value = p_value))
+}
+
+# head(anova_results)
+
+pvalue_all= anova_results$p_value
+hist(pvalue_all, breaks = 50, ylim = c(0, 6000))
+
+
+anova_results <- anova_results %>%
+  mutate(adj_p_value = p.adjust(p_value,method = "BH"))
+
+
+# Filter significant results
+significant_genes <- anova_results %>%
+  filter(adj_p_value <= 0.05)
+
+length(rownames(significant_genes))
+
+```
+
+## Heatmap, clustering and GO analyse 
+
+```{r}
+# Function to calculate z-scores
+cal_zscore = function(df) {
+  df$Expression = as.numeric(df$Expression)
+  df$z_score = scale(df$Expression)
+  return(df)  # Ensure the modified dataframe is returned
+}
+
+# Initialize a data frame to store results
+results_all <- data.frame(Gene = character(), variable = numeric(), z_score = numeric(), stringsAsFactors = FALSE) 
+
+# Loop through each gene and calculate z-scores
+for (gene in unique(significant_genes$Gene)) {
+  gene_data <- all_long %>% filter(Gene == gene)
+  gene_data <- cal_zscore(gene_data)
+  # Store results
+  results_all <- rbind(results_all, gene_data)
+}
+
+# results_all
+
+# Spread the data to wide format
+heatmap_data <- results_all %>%
+  select(Gene, variable, z_score) %>%
+  spread(key = variable, value = z_score)
+
+
+# Set rownames to be the genes
+rownames(heatmap_data) <- heatmap_data$Gene
+heatmap_data <- heatmap_data[, -1]
+
+# Perform k-means clustering
+set.seed(123)  # For reproducibility
+kmeans_result = kmeans(heatmap_data, centers = 6,
+                       nstart = 2500, 
+                       iter.max = 2000)
+
+
+kmeans_data = heatmap_data[order(kmeans_result$cluster),]
+
+
+# Create a heatmap with the clustered data
+pheatmap(kmeans_data,
+         cluster_cols = FALSE, 
+         cluster_rows = TRUE,
+         show_rownames = FALSE)
+         # annotation_row = data.frame(Cluster = as.factor(kmeans_result$cluster)))
+```
+
+```{r}
+gene_list = dds_filtered[significant_genes$Gene,]
+gene_list_df = results(gene_list)
+
+GO_list = gene_list_df$log2FoldChange
+names(GO_list) = rownames(gene_list_df)
+GO_list = sort(GO_list, decreasing = TRUE)
+anyDuplicated(names(GO_list))
+# GO_list = gene_list[!duplicated(names(GO_list))]
+# significant_genes
+ego <- enrichGO(gene          = names(GO_list),
+                OrgDb         = org.Mm.eg.db,
+                keyType       = "SYMBOL",
+                ont           = "ALL",
+                pAdjustMethod = "BH",
+                pvalueCutoff  = 0.01,
+                qvalueCutoff  = 0.05,
+                readable      = TRUE)
+
+print(ego@result$ID[1:10],)
+
+dotplot(ego, showCategory = 10, title = "GO")
+
+```
+## GSEA
+```{r}
+gsea_results <- gseGO(geneList = GO_list,
+                      OrgDb = org.Mm.eg.db,
+                      ont = "ALL",
+                      keyType = "SYMBOL",
+                      exponent = 1,
+                      pvalueCutoff = 0.05,
+                      verbose = TRUE,
+                      seed = TRUE)
+
+dotplot(gsea_results, showCategory=5, split=".sign") + facet_grid(.~.sign)
+
+cnetplot(gsea_results, categorySize="pvalue", foldChange=GO_list, showCategory = 3)
+ridgeplot(gsea_results) + labs(x = "enrichment distribution")
+gse <- pairwise_termsim(gsea_results)
+emapplot(gse, showCategory = 10)
+gseaplot(gsea_results, by = "all", title = gse$Description[1], geneSetID = 1)
+```
+
+## GO based on cluster
+```{r}
+# Extract gene lists for each cluster
+gene_clusters <- split(rownames(kmeans_data), kmeans_result$cluster)
+enrichment_results <- list()
+# Perform functional enrichment analysis on each gene list
+for (i in 1:6) {
+    cluster_genes <- gene_clusters[[i]]
+    cluster_genes_entrez <- bitr(cluster_genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Mm.eg.db)
+    cluster_genes_entrez <- cluster_genes_entrez$ENTREZID
+    
+    ego <- enrichGO(gene         = cluster_genes_entrez,
+                    OrgDb        = org.Mm.eg.db,
+                    keyType      = "ENTREZID",
+                    ont          = "BP",
+                    pAdjustMethod = "BH",
+                    pvalueCutoff  = 0.05,
+                    qvalueCutoff  = 0.2)
+    
+    enrichment_results[[i]] <- ego
+    p <- dotplot(ego, showCategory = 10)
+    print(p)
+}
+
+enrichment_results[[1]]
+top_terms <- sapply(enrichment_results, function(x) {
+  if (nrow(x) > 0) {
+    return(x@result$Description[1])
+  } else {
+    return("No significant term")
+  }
+})
+
+
+# Create a data frame for annotation
+annotation_df <- data.frame(Cluster = factor(1:6), GO_Process = top_terms)
+pheatmap(kmeans_data,
+         cluster_cols = FALSE, 
+         cluster_rows = FALSE,
+         show_rownames = FALSE,
+         annotation_row = data.frame(Cluster = as.factor(kmeans_result$cluster)))
+annotation_df
+```
+## Visualization of Individual Genes
+
+```{r}
+# Plot CDK2 RPKM histogram
+cdk2_rpkm = rpkm["Cdk2",]
+cdk2_df = data.frame(Group = conditions, RPKM = cdk2_rpkm)
+summary_cdk2_df = cdk2_df %>%
+  group_by(Group) %>%
+  summarise(
+    mean_RPKM = mean(RPKM),
+    sd_RPKM = sd(RPKM)
+  )
+
+ggplot(summary_cdk2_df, aes(x = Group, y = mean_RPKM, fill = Group)) +
+  geom_bar(stat = "identity", position = position_dodge(), width = 0.7) +
+  geom_errorbar(aes(ymin = mean_RPKM - sd_RPKM, ymax = mean_RPKM + sd_RPKM), 
+                width = 0.2, position = position_dodge(0.7)) +
+  theme_minimal() +
+  labs(title = "RPKM Values by Group with SD Error Bars", x = "Group", y = "Mean RPKM") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+
+
+
