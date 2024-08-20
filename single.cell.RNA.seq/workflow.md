@@ -13,9 +13,19 @@ https://satijalab.org/seurat/articles/pbmc3k_tutorial, which include the basic o
 briefly, including:
 
 >normalize
+
+
 >findfeatures
+
+
 >scaling
+
+
 >linear dimensional reduction
+
+
 >clustering the cells
+
+
 >run non-linear dimensional reduction
 
