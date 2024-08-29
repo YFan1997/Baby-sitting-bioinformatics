@@ -237,5 +237,25 @@ ggplot(pca_data, aes(x = PC1, y = PC2, color = group, shape = age_group)) +
   theme_classic()
 
 
-```
+```{r}
+## annoatation example
+library(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+anno <- getAnnotation(IlluminaHumanMethylation450kanno.ilmn12.hg19)
+methylationData <- getBeta(mset)
+annotatedData <- data.frame(anno,methylationData)
+filteredData <- annotatedData[dml_young, ]
+filteredDataWithGenes <- data.frame(
+  ProbeID = rownames(filteredData),
+  GeneName = anno[rownames(filteredData), "UCSC_RefGene_Name"],
+  filteredData
+)
+
+#Keep only the first gene name for each probe
+filteredDataWithGenes$GeneName <- sapply(
+  strsplit(as.character(filteredDataWithGenes$GeneName), ";"),
+  function(x) x[1]
+)
+
+
+filteredDataWithGenes
 ```
