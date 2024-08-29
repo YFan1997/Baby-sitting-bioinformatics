@@ -1,0 +1,241 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#DNA-methlylation analyze baby-sitting by Yifan
+
+## Data citation
+	
+Corley MJ, Vargas-Maya N, Pang APS, Lum-Jones A et al. Epigenetic Delay in the Neurodevelopmental Trajectory of DNA Methylation States in Autism Spectrum Disorders. Front Genet 2019;10:907. PMID: 31681403
+
+## Data
+
+GSE131706
+
+```{r}
+
+## obtain the necessary library
+library(GEOquery)
+library(minfi)
+library(stringr)
+library(ggplot2)
+library(data.table)
+
+```
+```{r}
+getGEOSuppFiles("GSE131706")
+untar("GSE131706/GSE131706_RAW.tar", exdir = "GSE131706/idat")
+length(list.files("GSE131706/idat", pattern = "idat"))
+idatFiles = list.files("GSE131706/idat", pattern = "idat.gz$", full = TRUE) 
+sapply(idatFiles, gunzip, overwrite = TRUE) 
+rg_reads = read.metharray.exp("GSE131706/idat")
+info = getGEO("GSE131706")
+pdata = pData(info[[1]])
+
+## assign group and sex
+pdata$group = as.factor(str_remove(pdata$characteristics_ch1.3,"^disease state:"))
+pdata$age <- as.numeric(str_extract(pdata$`age:ch1`, "^\\d+"))
+
+## define the age group
+pdata$age_group <- cut(pdata$age,
+                       breaks = c(-Inf, 16, 33, Inf),
+                       labels = c("young", "middle", "old"),
+                       right = FALSE)
+
+new_names = list()
+for (i in seq_along(sampleNames(rg_reads))){
+  new_names[[i]] =strsplit(sampleNames(rg_reads),"_")[[i]][[1]]
+}
+
+sampleNames(rg_reads) = new_names
+rownames(pdata)
+
+## check name
+all.equal(sampleNames(rg_reads), rownames(pdata))
+update_pdata = pdata[,c("group","age_group")]
+pData(rg_reads) = as(update_pdata, "DataFrame")
+
+## check phenotype data
+pData(rg_reads)
+
+## check part of raw data
+head(assay(rg_reads))
+```
+
+```{r}
+## preprocess the data
+mset = preprocessIllumina(rg_reads)
+mset = mapToGenome(mset)
+qc = getQC(mset)
+
+## check QC
+plotQC(qc)
+
+## get normalized value
+beta_values <- getBeta(mset)
+
+
+```
+
+
+```{r}
+## define groups 
+conditions = as.factor(pdata$group)
+ages = as.factor(pdata$age_group)
+
+## combine groups
+groups = as.factor(paste(update_pdata$group,"_",update_pdata$age_group))
+
+design = model.matrix(~ 0 + groups)
+#colnames(design)
+
+## redefine the colnames
+colnames(design) = c("ASD_middle","ASD_old","ASD_young","control_middle","control_old","control_young")
+
+## check design
+design
+
+
+library(limma)
+## define contrast
+contrasts <- makeContrasts(
+  AvC_young= ASD_young - control_young,
+    AvC_middle = ASD_middle - control_middle,
+    AvC_old = ASD_old - control_old,
+  A_old_young = ASD_old - ASD_young,
+  A_middle_young = ASD_middle - ASD_young, 
+  ASD_control = (ASD_young + ASD_middle + ASD_old)/3 - (control_young + control_middle + control_old)/3,
+  levels = colnames(design))
+
+## filter NA data
+beta_values = na.omit(beta_values)
+
+## fit the model
+fit = lmFit(beta_values, design)
+fit_contrast = contrasts.fit(fit, contrasts)
+fit2 = eBayes(fit_contrast)
+
+
+update_pdata$group <- trimws(update_pdata$group)
+update_pdata$age_group <- trimws(update_pdata$age_group)
+
+dmp_1 <- topTable(fit2, coef = "AvC_young", number = Inf,adjust.method = "BH")
+dmp_2 <- topTable(fit2, coef = "AvC_middle", number = Inf,adjust.method = "BH")
+dmp_3 <- topTable(fit2, coef = "AvC_old", number = Inf,adjust.method = "BH")
+
+
+dml_young = rownames(dmp_1[dmp_1$P.Value < 0.05 & abs(dmp_1$logFC) >= 0.1,])
+dml_middle =rownames(dmp_2[dmp_2$P.Value < 0.05 & abs(dmp_2$logFC) >= 0.1,])
+dml_old = rownames(dmp_3[dmp_3$P.Value < 0.05 & abs(dmp_3$logFC) >= 0.1,])
+
+## seperate into groups
+young_asd <- rownames(update_pdata[update_pdata$age_group == "young" & update_pdata$group == "ASD/Autism", ])
+young_control <- rownames(update_pdata[update_pdata$age_group == "young" & update_pdata$group == "Control", ])
+
+middle_asd <- rownames(update_pdata[update_pdata$age_group == "middle" & update_pdata$group == "ASD/Autism", ])
+middle_control <- rownames(update_pdata[update_pdata$age_group == "middle" & update_pdata$group == "Control", ])
+
+old_asd <- rownames(update_pdata[update_pdata$age_group == "old" & update_pdata$group == "ASD/Autism", ])
+old_control <- rownames(update_pdata[update_pdata$age_group == "old" & update_pdata$group == "Control", ])
+
+## assign data
+young_asd_data = beta_values[dml_young,young_asd]
+young_con_data = beta_values[dml_young,young_control]
+
+middle_asd_data = beta_values[dml_middle,middle_asd]
+middle_con_data = beta_values[dml_middle,middle_control]
+
+old_asd_data = beta_values[dml_old,old_asd]
+old_con_data = beta_values[dml_old,old_control]
+
+
+
+# Convert all data to data.tables and add necessary columns
+
+young_asd_dt <- data.table(Value = as.vector(young_asd_data), Age_Group = "Young", Condition = "ASD/Autism")
+young_con_dt <- data.table(Value = as.vector(young_con_data), Age_Group = "Young", Condition = "Control")
+
+middle_asd_dt <- data.table(Value = as.vector(middle_asd_data), Age_Group = "Middle", Condition = "ASD/Autism")
+middle_con_dt <- data.table(Value = as.vector(middle_con_data), Age_Group = "Middle", Condition = "Control")
+
+old_asd_dt <- data.table(Value = as.vector(old_asd_data), Age_Group = "Old", Condition = "ASD/Autism")
+old_con_dt <- data.table(Value = as.vector(old_con_data), Age_Group = "Old", Condition = "Control")
+
+# Combine all data tables into one
+
+combined_data <- rbind(young_asd_dt, young_con_dt, middle_asd_dt, middle_con_dt, old_asd_dt, old_con_dt)
+combined_data$Age_Group <- factor(combined_data$Age_Group, levels = c("Young", "Middle", "Old"))
+combined_data$Condition<- factor(combined_data$Condition, levels = c("ASD/Autism", "Control"))
+
+
+ggplot(combined_data, aes(x = Age_Group, y = Value, fill = Condition)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, position = position_dodge(width = 0.9)) +  # Optional: Add boxplot for median and IQR
+  labs(title = "Violin Plot of DNA Methylation by Age Group and Condition",
+       x = "Age Group", y = "DNA Methylation") +
+  scale_fill_manual(values = c("ASD/Autism" = "orange", "Control" = "green")) + 
+  theme_classic()
+
+
+## example of ks_test
+ks_test_result <- ks.test(combined_data$Value[combined_data$Age_Group == "Old"& combined_data$Condition=="ASD/Autism"], 
+                          combined_data$Value[combined_data$Age_Group == "Old"& combined_data$Condition=="Control"])
+ks_test_result
+
+```
+
+```{r}
+library(umap)
+data_matrix <- t(beta_values)
+# Set UMAP configuration parameters if desired
+umap_config <- umap.defaults
+umap_config$n_neighbors <- 4  # Number of neighbors (can be adjusted)
+umap_config$min_dist <- 0.1    # Minimum distance between points (can be adjusted)
+
+# Perform UMAP
+umap_result <- umap(data_matrix, config = umap_config)
+
+umap_data <- as.data.frame(umap_result$layout)
+
+# Add sample information (condition, age_group) to the UMAP data
+umap_data$Sample <- rownames(umap_data)
+update_pdata$Sample = rownames(update_pdata)
+umap_data
+update_pdata
+umap_data <- merge(umap_data, update_pdata, by = "Sample")
+
+# Rename the UMAP dimensions for easier plotting
+colnames(umap_data)[1:2] <- c("UMAP1", "UMAP2")
+
+ggplot(umap_data, aes(x = UMAP1, y = UMAP2, color = group, shape = age_group)) +
+  geom_point(size = 3) +
+  labs(title = "UMAP of Methylation Data",
+       x = "UMAP Dimension 1",
+       y = "UMAP Dimension 2") +
+  theme_classic()
+
+```
+```{r}
+# Perform PCA
+pca_result <- prcomp(data_matrix, center = TRUE, scale. = TRUE)
+# Summary of PCA results
+summary(pca_result)
+
+pca_data <- as.data.frame(pca_result$x)
+
+# Add sample information (condition, age_group) to the PCA data
+pca_data$Sample <- rownames(pca_data)
+pca_data <- merge(pca_data, update_pdata, by = "Sample")
+
+# Plot the first two principal components with ggplot2
+ggplot(pca_data, aes(x = PC1, y = PC2, color = group, shape = age_group)) +
+  geom_point(size = 3) +
+  labs(title = "PCA of Methylation Data",
+       x = "Principal Component 1",
+       y = "Principal Component 2") +
+  theme_classic()
+
+
+```
+```
