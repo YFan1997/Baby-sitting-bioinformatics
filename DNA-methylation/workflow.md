@@ -11,8 +11,22 @@ this term refer the methylation level at each CpG site, range from 0 to 1, which
 
 ### Whole genome Bisulfite Sequencing
 this is another way for obtaining DNA methylation data, during the sequenceing, the DNA fragments are read in a massively parallel manner and generating large amounts of data including original sequence and bisulfite-converted bases. Normally, we use specific alignment tools such as Bismark to align the result in reference genome. After alignment, the methylation status of each C will be determined, and the proportion of reads C/T will be calculated.
+there are two very useful and mature tools for analyze WGBS
+https://www.bioconductor.org/packages/release/bioc/vignettes/bsseq/inst/doc/bsseq_analysis.html#4_Finding_DMRs
+https://bioconductor.org/packages/release/bioc/vignettes/bumphunter/inst/doc/bumphunter.pdf
+
+## During the analyze
+when we analyzing data, there are several terms may needs attention.
+>pdata
+this is stands for phenotype data, normally in the matrix infomation part
+
+>DMR
+different methylated regions, normally they are filtered by p value and fold change, indicating the statistically different region from sample and control
+
+
 
 after obtaining these based information, we can use R to analyze real-world data.
+
 
 
 
