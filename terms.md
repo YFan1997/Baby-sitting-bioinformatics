@@ -1,4 +1,4 @@
-# Teminology in bioinformatics and genetics world
+# Teminologies in bioinformatics and genetics world
 > this page is my notes of some terminologies, more focusing on biological aspect
 
 ## Cis-regulatory elements
@@ -12,3 +12,4 @@ entire region of a gene, all the DNA sequences
 
 ## hybrid-binding domain
 specific region or part of a protein that has the ability to recognaize and bind to hybrid structure.
+
