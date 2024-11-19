@@ -37,9 +37,17 @@ using scRNA-seq to profile the composition and functions of macriophages(GAMs) i
 > GL261 is common glioma model
 #### 3.2 methods
 control: CD11b+ from male and female mice naive brain 
+
+
 target: CD11b+ from male and female mice tumor brain 
+
+
 annotation cell cluster
+
+
 further analyze sub cell type 
+
+
 identify differential expressed gene, pathway
 
 
