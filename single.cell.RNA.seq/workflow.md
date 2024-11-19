@@ -2,7 +2,7 @@
 there is an excellent book for single cell RNA-seq:https://www.sc-best-practices.org/preamble.html
 we will combine with Seurat R package and take a close look at it
 ### 1. data structure
-scRNA seq is quite similar to the bulk RNA-seq, the key is getting the count from fastq file, so it will also go through alignment and annotation.  Howevere, based on different technique, the count matrix generated from scRNA-seq is different, the unique barcodes would be colnames, while the features would be the rownames, we could use cellranger to process fastq file
+scRNA seq is quite similar to the bulk RNA-seq, the key is getting the count from fastq file, so it will also go through alignment and annotation.  However, based on different technique, the count matrix generated from scRNA-seq is different, the unique barcodes would be colnames, while the features would be the rownames, we could use cellranger to process fastq file
 ```bash
 cellranger count --id=sample1 --transcriptome=/path/to/reference --fastqs=/path/to/fastqs --sample=sample1
 ```
@@ -161,3 +161,5 @@ for sample in GSM4039241_f-ctrl-1 GSM4039242_f-ctrl-2 GSM4039243_f-tumor-1 GSM40
 done
 
 ```
+##### further in R
+when get prepared, the major package we will use is Seurat:https://satijalab.org/seurat/ a powerful analyzsis tool for scRNA-seq
