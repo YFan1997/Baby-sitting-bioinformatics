@@ -1,0 +1,75 @@
+﻿Gene,Target
+Ptprc,hematopoietic
+Itgam,myeloid
+Cd14,myelomonocytic
+Tmem119,microglia
+Cx3cr1,microglia
+P2ry12,microglia
+P2ry13,microglia
+Gpr34,microglia
+Olfml3,microglia
+Selplg,microglia
+Sparc,microglia
+Fcrls,microglia
+Siglech,microglia
+Slc2a5,microglia
+Pf4,microglia progenitors
+F13a1,microglia progenitors
+Lyz2,microglia progenitors
+Ifit3,microglia progenitors
+Mcm5,early microglia
+Dab2,early microglia
+Cxcr2,pre-microglia
+Scd2,pre-microglia
+Psat1,pre-microglia
+Csf1,pre-microglia
+Crybb1,pre-microglia
+Fcrls,pre-microglia
+Selplg,adult microglia
+Mafb,adult microglia
+Pmepa1,adult microglia
+Cd14,adult microglia
+Lpl,disease associated microglia
+Cst7,disease associated microglia
+Itga4,macrophages
+Tgfbi,macrophages
+Ifitm2,macrophages
+Ifitm3,macrophages
+Tagln2,macrophages
+F13a1,macrophages
+Fpr3,macrophages
+Kynu,macrophages
+S100a11,macrophages
+S100a6,macrophages
+Tgm2,Glioma Associated Microglia/Macrophages
+Gpnmb,Glioma Associated Microglia/Macrophages
+Emilin2,macrophages in high-grade giloma environment
+Gda,macrophages in high-grade giloma environment
+Hp,macrophages in high-grade giloma environment
+Sell,macrophages in high-grade giloma environment
+Cd163,Border Associated Macrophage
+Mrc1,Border Associated Macrophage
+Lyve1,Border Associated Macrophage
+Siglec1,Border Associated Macrophage
+Ly6c1,monocytes
+Ly6c2,monocytes
+Ccr2,classical monocytes
+Spn,(CD43)non-classical monocytes
+Ly6g,Granulocytes
+Cd24a,granulocytes/dendritic cells
+Itgax,dendritic cells
+Bst2,plasmocytoid dendritic cells
+Ncam1,NK cells
+Klrb1c,NK cells
+Klrk1,NK cells
+Ncr1,NK cells
+Cd2,"T-cells, NK cells"
+Cd3d,T cells
+Cd3e,T cells
+Cd3g,T cells
+Cd4,helper T cell
+Cd8a,cytotoxic T cell
+Cd8b1,cytotoxic T cell
+Cd19,B-cells
+Ms4a1,B-cells
+Sdc1,B-cells

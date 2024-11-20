@@ -1,0 +1,153 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+```{r}
+#install.packages('Seurat')
+#install.packages("parallelly")
+library(SeuratObject)
+library(Seurat)
+library(dplyr)
+# sample_names <- c("GSM4039241_f-ctrl-1", "GSM4039242_f-ctrl-2", 
+#                   "GSM4039243_f-tumor-1", "GSM4039244_f-tumor-2",
+#                   "GSM4039245_m-ctrl-1", "GSM4039246_m-ctrl-2", 
+#                   "GSM4039247_m-tumor-1", "GSM4039248_m-tumor-2")
+
+# seurat_list <- list()
+# setwd("/mnt/pv_compute/yifan/practice/scRNA.practice/")
+# for (sample in sample_names) {
+#   data_dir <- paste0("processed/", sample)
+#   
+#   # Read the data
+#   sc_data <- Read10X(data.dir = data_dir)
+#   
+#   # Create Seurat object
+#   seurat_obj <- CreateSeuratObject(counts = sc_data, project = sample)
+#   
+#   # Add sample metadata
+#   seurat_obj$sample <- sample
+#   
+#   # Assign condition based on sample name
+#   if (grepl("f-ctrl", sample)) {
+#     seurat_obj$condition <- "female_control"
+#   } else if (grepl("f-tumor", sample)) {
+#     seurat_obj$condition <- "female_tumor"
+#   } else if (grepl("m-ctrl", sample)) {
+#     seurat_obj$condition <- "male_control"
+#   } else if (grepl("m-tumor", sample)) {
+#     seurat_obj$condition <- "male_tumor"
+#   }
+#   
+#   # Add sex metadata
+#   if (grepl("^GSM403924[1-4]", sample)) {
+#     seurat_obj$sex <- "female"
+#   } else {
+#     seurat_obj$sex <- "male"
+#   }
+#   
+#   # Add treatment metadata
+#   if (grepl("ctrl", sample)) {
+#     seurat_obj$treatment <- "control"
+#   } else if (grepl("tumor", sample)) {
+#     seurat_obj$treatment <- "tumor"
+#   }
+#   
+#   # Store the Seurat object in the list
+#   seurat_list[[sample]] <- seurat_obj
+# }
+# 
+# 
+# for (i in 1:length(seurat_list)) {
+#   seurat_list[[i]][["percent.mt"]] <- PercentageFeatureSet(seurat_list[[i]], pattern = "^MT-")
+#   seurat_list[[i]] <- subset(seurat_list[[i]], subset = nFeature_RNA > 200 & nFeature_RNA < 3000 & percent.mt < 5)
+# }
+# 
+# for (i in 1:length(seurat_list)) {
+#   seurat_list[[i]] <- NormalizeData(seurat_list[[i]],normalization.method = "LogNormalize", scale.factor = 10000)
+#   seurat_list[[i]] <- FindVariableFeatures(seurat_list[[i]], selection.method = "vst", nfeatures = 2000)
+# }
+```
+
+```{r}
+# Read 10X data
+test.data <- Read10X(data.dir = "/mnt/pv_compute/yifan/practice/scRNA.practice/processed/GSM4039241_f-ctrl-1/")
+
+# Create Seurat object
+test <- CreateSeuratObject(counts = test.data, project = "female_control")
+
+# Normalize the data
+test <- NormalizeData(test, normalization.method = "LogNormalize", scale.factor = 10000)
+
+# Identify variable features (optional, for efficiency)
+test <- FindVariableFeatures(test, selection.method = "vst", nfeatures = 2000)
+
+# Scale the data
+test <- ScaleData(test, verbose = FALSE)
+
+# Run PCA
+test <- RunPCA(test, features = VariableFeatures(object = test), verbose = FALSE)
+
+```
+
+```{r}
+DimPlot(test, reduction = "pca") + NoLegend()
+DimHeatmap(test, dims = 1:5, cells = 500, balanced = TRUE)
+
+## check the ideal cluster
+ElbowPlot(test)
+```
+```{r}
+test = FindNeighbors(test, dims = 1:30)
+test = FindClusters(test,resolution= 0.3)
+
+test = RunUMAP(test, dims = 1:30)
+DimPlot(test, reduction = "umap")
+
+test <- RunTSNE(test, dims = 1:30)
+
+DimPlot(test, reduction = "tsne")
+#save by
+#saveRDS(test, file = "../output/test.rds")
+
+```
+## check markers
+```{r}
+cluster0.markers = FindMarkers(test, ident.1 = 0)
+head(cluster0.markers)
+test.markers <- FindAllMarkers(test, only.pos = TRUE)
+test.markers = test.markers %>%
+              group_by(cluster) %>%
+              dplyr::filter(avg_log2FC > 1)
+head(test.markers$gene)
+VlnPlot(test, features = c("Fos"))
+FeaturePlot(test, features = c("Fos"))
+```
+## Annotation
+```{r}
+test.markers %>%
+    group_by(cluster) %>%
+    dplyr::filter(avg_log2FC > 1) %>%
+    slice_head(n = 10) %>%
+    ungroup() -> top10
+DoHeatmap(test, features = top10$gene) + NoLegend()
+```
+```{r}
+annota.ref = read.csv("annotation.csv")
+df <- data.frame()
+
+matched_genes <- top10 %>%
+  inner_join(annota.ref, by = c("gene" = "Gene"))
+
+matched_genes
+levels(test)
+cluster.id= c("unidentify1","unidentify2","disease associated microglia",
+           "unidentify3","microglia progenitors","macrophages",
+           "unidentify4","unidentify5")
+names(cluster.id) <- levels(test)
+test <- RenameIdents(test, cluster.id)
+DimPlot(test, reduction = "tsne", label = TRUE, pt.size = 0.5) + NoLegend()
+
+```
+## further analysis should focuse data integration
+# https://satijalab.org/seurat/articles/integration_introduction
