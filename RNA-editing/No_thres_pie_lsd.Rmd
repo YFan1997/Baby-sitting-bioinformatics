@@ -1,0 +1,957 @@
+```{r}
+setwd("/mnt/pv_compute/yifan/LSD1_PIEseq")
+library(devtools)
+#install_github("dieterich-lab/JACUSA2helper", dependencies = TRUE, build_vignettes = TRUE)
+library(JACUSA2helper)
+library(GenomicRanges)
+library(BSgenome)
+library(GenomeInfoDb)
+library(plyranges)
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(pROC)
+library(VennDiagram)
+library(NMF)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+library(ChIPseeker)
+library(org.Hs.eg.db)
+#BiocManager::install("meme")
+
+```
+
+```{r}
+wpath = "/mnt/pv_compute/yifan/LSD1_PIEseq/no_thres_editing.sites/"
+
+#wo.snp
+wo.snp_path = paste0(wpath,"/wo.snp/")
+
+## HEK2P3 Tcell 
+
+#None v APAD
+h.none.apad = read_result(paste0(wo.snp_path,"H.None.vs.APAD.wo.snp"))
+#None v LowLSD
+h.none.lowlsd = read_result(paste0(wo.snp_path,"H.None.vs.lowLSD1.wo.snp"))
+#None v HighLSD
+h.none.highlsd = read_result(paste0(wo.snp_path,"H.None.vs.highLSD1.wo.snp"))
+#None v LowPUM
+h.none.lowpum = read_result(paste0(wo.snp_path,"H.None.vs.lowPUM.wo.snp"))
+#None v HighPUM
+h.none.highpum = read_result(paste0(wo.snp_path,"H.None.vs.highPUM.wo.snp"))
+
+#APAD v LowLSD
+h.APAD.lowlsd = read_result(paste0(wo.snp_path,"H.APAD.vs.lowLSD1.wo.snp"))
+#APAD v HighLSD
+h.APAD.highlsd = read_result(paste0(wo.snp_path,"H.APAD.vs.highLSD1.wo.snp"))
+#APAD v LowPUM
+h.APAD.lowpum = read_result(paste0(wo.snp_path,"H.APAD.vs.lowPUM.wo.snp"))
+#None v HighPUM
+h.APAD.highpum = read_result(paste0(wo.snp_path,"H.APAD.vs.highPUM.wo.snp"))
+
+
+# K562 cell
+#None v APAD
+k.none.apad = read_result(paste0(wo.snp_path,"K.None.vs.APAD.wo.snp"))
+#None v LSD
+k.none.lsd = read_result(paste0(wo.snp_path,"K.None.vs.LSD1.wo.snp"))
+#None v PUM
+k.none.pum = read_result(paste0(wo.snp_path,"K.None.vs.PUM.wo.snp"))
+#APAD v LSD
+k.apad.lsd = read_result(paste0(wo.snp_path,"K.APAD.vs.LSD1.wo.snp"))
+#APAD v PUM
+k.apad.pum = read_result(paste0(wo.snp_path,"K.APAD.vs.PUM.wo.snp"))
+
+
+```
+## functions
+```{r}
+es_cal = function(jacusa_result, rep_number) {
+  
+  for (i in 1:rep_number) {
+    # Create dynamic column names for es_con1 and es_con2
+    col_es_con1 = paste0("es_cond1_", i)
+    col_es_con2 = paste0("es_cond2_", i)
+    
+    # Use mutate() and := to dynamically assign to these columns
+    jacusa_result = jacusa_result %>%
+      mutate(!!col_es_con1 := JACUSA2helper::base_sub(as.matrix(jacusa_result$bases$cond1[[paste0("rep", i)]]), jacusa_result$ref)) %>%
+      mutate(!!col_es_con2 := JACUSA2helper::base_sub(as.matrix(jacusa_result$bases$cond2[[paste0("rep", i)]]), jacusa_result$ref))
+  }
+  
+  return(jacusa_result)
+}
+
+
+
+er_sc_cal_cond = function(jacusa_result, rep_number, test_group,control_group){
+ # cond2 set as the test group
+  for (i in 1:rep_number){
+    ## es for editing sites
+    ## er for editing rate
+    ## sc for substitute count
+    
+    cond_es_rep_test = paste0("es_",test_group,"_",i)
+    cond_er_rep_test = paste0("er_",test_group,"_",i)
+    cond_sc_rep_test = paste0("sc_",test_group,"_",i)
+    
+    cond_es_rep_control = paste0("es_",control_group,"_",i)
+    cond_er_rep_control = paste0("er_",control_group,"_",i)
+    cond_sc_rep_control = paste0("sc_",control_group,"_",i)
+
+    
+    ## In condition
+    temp = jacusa_result %>%
+      filter(!!rlang::sym(cond_es_rep_test) == "C->T" | !!rlang::sym(cond_es_rep_test) == "A->G" )
+      
+    AG_group <- temp %>%
+      filter(!!rlang::sym(cond_es_rep_test) == "A->G")
+    CT_group <- temp %>%
+      filter(!!rlang::sym(cond_es_rep_test) == "C->T")
+      
+    # Assign calculated values using the computed column names
+    AG_group = AG_group %>%
+      mutate(!!cond_er_rep_test := JACUSA2helper ::sub_ratio(
+               AG_group$ref, as.matrix(AG_group$bases[[test_group]][[paste0("rep", i)]]), 
+               bc = "G")) %>%
+      mutate(!!cond_sc_rep_test := JACUSA2helper ::sub_counts(
+        AG_group$ref,as.matrix(AG_group$bases[[test_group]][[paste0("rep", i)]]), 
+        bc = "G")) %>%
+      mutate(!!cond_er_rep_control := JACUSA2helper ::sub_ratio(
+        AG_group$ref, 
+        as.matrix(AG_group$bases[[control_group]][[paste0("rep", i)]]), 
+        bc = "G")) %>%
+      mutate(!!cond_sc_rep_control := JACUSA2helper ::sub_counts(
+        AG_group$ref,as.matrix(AG_group$bases[[control_group]][[paste0("rep", i)]]),
+        bc = "G"))
+  
+  
+    CT_group = CT_group %>%
+      mutate(!!cond_er_rep_test := JACUSA2helper ::sub_ratio(
+        CT_group$ref, as.matrix(CT_group$bases[[test_group]][[paste0("rep", i)]]), 
+        bc = "T")) %>%
+      mutate(!!cond_sc_rep_test := JACUSA2helper ::sub_counts(
+        CT_group$ref,as.matrix(CT_group$bases[[test_group]][[paste0("rep", i)]]), 
+        bc = "T")) %>%
+      mutate(!!cond_er_rep_control := JACUSA2helper ::sub_ratio(
+        CT_group$ref, as.matrix(CT_group$bases[[control_group]][[paste0("rep", i)]]), 
+        bc = "T")) %>%
+      mutate(!!cond_sc_rep_control := JACUSA2helper ::sub_counts(
+        CT_group$ref,as.matrix(CT_group$bases[[control_group]][[paste0("rep", i)]]), 
+        bc = "T"))
+  }
+  
+  jacusa_result = c(AG_group, CT_group)
+  return(jacusa_result)
+}
+
+# combine_conds = function(jacusa_result,rep_number){
+#   jacusa_result_cond1 = er_sc_cal_cond(jacusa_result, rep_number,"cond1")
+#   jacusa_result_cond2 = er_sc_cal_cond(jacusa_result, rep_number,"cond2")
+#   return(list(jacusa_result_cond1,jacusa_result_cond2))
+# }
+
+compare_high_low = function(high_data, low_data, target,label1,label2){
+  categories <- union(high_data$es_cond2_1, low_data$es_cond2_1)
+  
+  table_highpum <- table(factor(high_data$es_cond2_1, levels = categories))
+  table_lowpum  <- table(factor(low_data$es_cond2_1, levels = categories))
+  
+  combine <- cbind(table_highpum, table_lowpum)
+  
+  combine_df <- as.data.frame(combine)
+  colnames(combine_df) <- c(label1,label2) 
+  combine_df$Mutation <- rownames(combine_df)  
+  
+  combine_long <- pivot_longer(combine_df, cols = c(label1,label2),
+                               names_to = "Condition", values_to = "Number")
+  
+  p = ggplot(combine_long, aes(x = Mutation, y = Number, fill = Condition)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    theme_minimal() +
+    labs(title = paste0("Comparison of editing sites between ", target),
+         x = "Mutation Types", 
+         y = "Number") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  print(p)
+}
+
+editing_count_plot <- function(processed_result, sites, title){
+  
+  x <- processed_result
+  
+  filtered_data1 <- x[x$es_cond1_1 == sites, ]
+  filtered_data2 <- x[x$es_cond2_1 == sites, ]
+  
+  max_sc_cond1_1 <- max(filtered_data1$sc_cond1_1, na.rm = TRUE)
+  max_sc_cond2_1 <- max(filtered_data2$sc_cond2_1, na.rm = TRUE)
+  
+  data1 <- filtered_data1[filtered_data1$sc_cond1_1 < 100, ]$sc_cond1_1
+  data2 <- filtered_data2[filtered_data2$sc_cond2_1 < 100, ]$sc_cond2_1
+  
+  # Extract labels from the title
+  label <- strsplit(title, "\\.")[[1]]
+  cond1 <- label[2]
+  # print("condition 1 is")
+  # print(cond1)
+  cond2 <- label[3]
+  
+  # Update the group variable to use cond1 and cond2
+  combined_data <- data.frame(
+    editing_sites = c(data1, data2),
+    group = rep(c(cond1, cond2), 
+                times = c(length(data1), length(data2)))
+  )
+  
+  # Construct the ggplot object
+  p <- ggplot(combined_data, aes(x = editing_sites, fill = group)) +
+    geom_histogram(aes(y = after_stat(density)), 
+                   position = "identity", 
+                   bins = 100, 
+                   alpha = 0.5) +
+    # Set titles and labels
+    labs(title = paste0(sites, " Editing Sites for ", title), 
+         x = "Editing number per gene", 
+         y = "Frequency") +
+    # Set custom colors using cond1 and cond2 as group labels
+    scale_fill_manual(name = "Group", 
+                      values = c(
+                        setNames("orange", cond1),
+                        setNames("blue", cond2)
+                      )) +
+    # Minimal theme
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 0, hjust = 1),
+          legend.position = "right")
+  print(p)
+}
+
+editing_site_plot = function(processed_result, title) {
+  x <- processed_result
+  
+  # Get all unique categories from both conditions
+  categories <- union(names(table(x$es_cond1_1)), names(table(x$es_cond2_1)))
+  
+  # Create tables for each condition with consistent category levels
+  table_cond1 <- table(factor(x$es_cond1_1, levels = categories))
+  table_cond2 <- table(factor(x$es_cond2_1, levels = categories))
+  
+  # Combine the tables using rbind
+  value <- rbind(table_cond1, table_cond2)
+  
+  # Extract condition labels from the title
+  label <- strsplit(title, "\\.")[[1]]
+  cond1 <- label[2]
+  cond2 <- label[3]
+  
+  # Assign row names for the conditions
+  rownames(value) <- c(cond1, cond2)
+  
+  # Convert the table into a data frame
+  value_df <- as.data.frame(value)
+  
+  # Add the 'Variable' column from the row names
+  value_df$Variable <- rownames(value_df)
+  
+  # Optional: Move 'Variable' column to the first position
+  value_df <- value_df[, c(ncol(value_df), 1:(ncol(value_df)-1))]
+  
+  
+  # Convert data frame to long format
+  value_long <- pivot_longer(
+    value_df, 
+    cols = -Variable, 
+    names_to = "Mutation", 
+    values_to = "Number"
+  )
+  
+  # Calculate the ratio for each mutation within each condition
+  value_long <- value_long %>%
+    group_by(Variable) %>%
+    mutate(Ratio = Number / sum(Number))
+  
+  # Load ggplot2 library
+  library(ggplot2)
+  
+  # Generate the bar plot with Ratio on the y-axis
+  p <- ggplot(value_long, aes(x = Mutation, y = Ratio, fill = Variable)) +
+    geom_bar(stat = "identity", position = "dodge") +  # 'dodge' to create grouped bars
+    theme_minimal() +
+    labs(
+      title = paste0(title, " Editing Sites Comparison"), 
+      x = "Mutation Types", 
+      y = "Ratio"
+    ) +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +  # Optional: Format y-axis as percentages
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+  # Print the plot
+  print(p)
+}
+
+venn_plot_for_mutation <- function(gr1, gr2, mutation_type, category_names = c("Set 1", "Set 2"), colors = c("red", "blue")) {
+  
+  filtered_gr1 <- gr1[gr1$es_cond2_1 == mutation_type]
+  filtered_gr2 <- gr2[gr2$es_cond2_1 == mutation_type]
+  
+
+  suppressWarnings({overlaps <- findOverlaps(filtered_gr1, filtered_gr2)})
+  
+
+  unique_gr1 <- setdiff(seq_along(filtered_gr1), queryHits(overlaps))
+  unique_gr2 <- setdiff(seq_along(filtered_gr2), queryHits(overlaps))
+  
+
+  num_gr1_only <- length(unique_gr1)
+  num_gr2_only <- length(unique_gr2)
+  num_overlaps <- length(overlaps)
+  
+  # Step 5: Create the Venn diagram
+  P = venn.plot <- draw.pairwise.venn(
+    area1 = num_gr1_only + num_overlaps,   
+    area2 = num_gr2_only + num_overlaps,   
+    cross.area = num_overlaps,             
+    category = category_names,             
+    fill = colors,                          
+    alpha = 0.5,                            
+    cat.cex = 1,                            
+    cex = 1.2                                
+  )
+  
+  return(P)
+}
+
+get_sig = function(filtered_con_data){
+  filtered_con_data$fold = 
+  filtered_con_data$er_cond2_1/filtered_con_data$er_cond1_1
+table(filtered_con_data$fold)
+
+  sig = filtered_con_data %>%
+    filter(er_cond2_1 >= 0.05) %>%
+    filter(fold >= 1.5) %>%
+    filter(score >= 3) %>%
+    filter(sc_cond2_1 >=1)
+  
+  print(summary(filtered_con_data))
+  print(summary(sig))
+  return(sig)
+}
+```
+
+#data processing
+```{r}
+samplelist = list(h.none.apad, h.none.lowlsd, h.none.highlsd,
+                  h.none.highpum,h.none.lowpum,h.APAD.lowlsd,
+                  h.APAD.highlsd,h.APAD.lowpum,h.APAD.highpum,
+                  k.none.apad,k.none.lsd,k.none.pum,k.apad.lsd,k.apad.pum)
+
+processed = lapply(samplelist, es_cal,1) #take 20 minutes
+con.processed = lapply(processed, er_sc_cal_cond,1,"cond2","cond1")
+
+
+names(processed) <- c("h.none.apad","h.none.lowlsd","h.none.highlsd","h.none.highpum","h.none.lowpum",
+           "h.APAD.lowlsd","h.APAD.highlsd","h.APAD.lowpum","h.APAD.highpum",
+           "k.none.APAD","k.none.lsd","k.none.pum","k.APAD.lsd","k.APAD.pum")
+
+names(con.processed) <- names(processed)
+
+
+```
+# editing count plot
+```{r}
+titles = names(con.processed)
+
+for (i in seq_along(con.processed)){
+  x = con.processed[[i]]
+  editing_count_plot(x,"C->T",titles[[i]])
+  editing_count_plot(x,"A->G",titles[[i]])
+}
+
+```
+## endogenous sites
+```{r}
+
+endolist = processed[c(2,3,4,5,11,12)]
+
+egs = list()
+for (i in seq_along(endolist)){
+  x = endolist[[i]]
+  x = x %>%
+    filter(es_cond2_1 == "C->T" | es_cond2_1 == "A->G") %>%
+    filter(es_cond1_1 == es_cond2_1)
+  
+  egs[[i]] = x
+}
+names(egs) = names(endolist)
+
+temp = processed [c(6,7,9,8,13,14)]
+names(egs)
+names(temp)
+filtered_list = list()
+
+for (i in seq_along(temp)){
+  x = temp[[i]]
+  egs_site = egs[[i]]
+  if (strsplit(names(temp[i]),"\\.")[[1]][3] == strsplit(names(egs[i]),"\\.")[[1]][3]){
+    print("name match")
+    print(names(temp[i]))
+    suppressWarnings(
+      {
+      overlap = findOverlaps(x, egs_site)
+      }
+    )
+    ## filter out endosites
+    x = x[-queryHits(overlap)]
+    filtered_list[[i]] = x
+  }
+  else{
+    print(strsplit(names(temp[i]),"\\.")[[1]][3])
+  }
+} 
+names(filtered_list) = names(temp)
+
+for (i in seq_along(filtered_list)) {
+  x <- filtered_list[[i]]
+  name <- names(filtered_list)[i]  # Correctly extract the name
+  print(name)
+  
+  # Print summaries
+  print(summary(temp[[name]]))
+  print(summary(x))
+}
+
+```
+```{r}
+filtered.con.processed = lapply(filtered_list, er_sc_cal_cond,1, "cond2","cond1")
+
+names(filtered.con.processed) = names(filtered_list)
+
+```
+
+```{r}
+titles = names(filtered_list)
+for (i in seq_along(filtered_list)){
+  
+  editing_site_plot(filtered_list[[i]],titles[i] )
+}
+
+names(filtered.con.processed)
+library(tidyr)
+titles2 = c( "HEK29T.APAD.lowLSD1.filtered", "HEK29T.APAD.highLSD1.filtered","HEK29T.APAD.highPUM2.filtered",
+             "HEK29T.APAD.lowPUM2.filtered", "K562.APAD.LSD1.filtered",
+             "K562.APAD.PUM2.filtered")
+editing_site_plot
+for (i in seq_along(filtered.con.processed)){
+  
+  editing_site_plot(filtered.con.processed[[i]],titles2[i] )
+}
+
+```
+```{R}
+editing_site_plot(processed$h.none.highlsd, "H.None.highLSD1")
+editing_site_plot(processed$h.none.lowlsd, "H.None.lowLSD1")
+editing_site_plot(processed$k.none.lsd, "K.None.LSD1")
+```
+# compare high and low
+```{r}
+
+#compare_high_low(H.cond.processed$h.APAD.highpum,H.cond.processed$h.APAD.lowpum, "PUM2")
+compare_high_low(filtered.con.processed$h.APAD.highpum,filtered.con.processed$h.APAD.lowpum, "PUM2","high","low")
+compare_high_low(filtered.con.processed$h.APAD.highlsd,filtered.con.processed$h.APAD.lowlsd, "LSD1","high","low")
+compare_high_low(filtered.con.processed$k.APAD.lsd,filtered.con.processed$k.APAD.pum, "K562","LSD1","PUM2")
+compare_high_low(filtered.con.processed$h.APAD.highlsd,filtered.con.processed$h.APAD.highpum, "Hek high concentration","LSD1","PUM2")
+compare_high_low(filtered.con.processed$h.APAD.lowlsd,filtered.con.processed$h.APAD.lowpum, "Hek low concentration","LSD1","PUM2")
+```
+```{r}
+p1 = venn_plot_for_mutation(filtered.con.processed$h.APAD.highpum,filtered.con.processed$h.APAD.lowpum, "C->T", category_names = c("Highpum", "Lowpum"))
+p2 = venn_plot_for_mutation(filtered.con.processed$h.APAD.highpum,filtered.con.processed$h.APAD.lowpum, "A->G", category_names = c("Highpum", "Lowpum"))
+p3 = venn_plot_for_mutation(filtered.con.processed$h.APAD.highlsd,filtered.con.processed$h.APAD.lowlsd, "C->T", category_names = c("Highlsd", "Lowlsd"))
+p4 = venn_plot_for_mutation(filtered.con.processed$h.APAD.highlsd,filtered.con.processed$h.APAD.lowlsd, "A->G", category_names = c("Highlsd", "Lowlsd"))
+
+
+library(gridExtra)
+
+grid.arrange(gTree(children = p1), gTree(children = p2), 
+             gTree(children = p3), gTree(children = p4), 
+              ncol = 2)
+```
+```{r}
+get_sig2 = function(filtered_con_data){
+  filtered_con_data$fold = 
+  filtered_con_data$er_cond2_1/filtered_con_data$er_cond1_1
+table(filtered_con_data$fold)
+
+  sig = filtered_con_data %>%
+    filter(er_cond2_1 >= 0.05) %>%
+    filter(fold >= 1.5)
+  
+  print(summary(filtered_con_data))
+  print(summary(sig))
+  return(sig)
+}
+
+#sig.result.list_no.zscore = lapply(filtered.con.processed,get_sig2)
+sig.result.list = lapply(filtered.con.processed,get_sig)
+
+names(sig.result.list)
+for (i in seq_along(sig.result.list)){
+  titles = names(sig.result.list)
+  editing_site_plot(sig.result.list[[i]], titles2[[i]])
+}
+
+names(filtered.con.processed)
+```
+```{r}
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(rtracklayer)
+
+gtf_file <- "/mnt/pv_compute/yifan/ref_genome/gencode.v44.annotation.gtf"
+#gtf_data <- import(gtf_file)
+#table(gtf_data$type)
+gtf_genes <- gtf_data[gtf_data$type == "gene", ]
+sig.result.annotate = list()
+suppressWarnings(for (i in seq_along(sig.result.list)){
+  x = sig.result.list[[i]]
+  temp_over = findOverlaps(x, gtf_genes)
+  genes = gtf_genes[subjectHits(temp_over)]
+  x = x[queryHits(temp_over)]
+  x$symbol = genes$gene_name
+  sig.result.annotate[[i]] = x
+})
+
+# sig.result_no.zscore.annotate = list()
+# suppressWarnings(for (i in seq_along(sig.result.list_no.zscore)){
+#   x = sig.result.list_no.zscore[[i]]
+#   temp_over = findOverlaps(x, gtf_genes)
+#   genes = gtf_genes[subjectHits(temp_over)]
+#   x = x[queryHits(temp_over)]
+#   x$symbol = genes$gene_name
+#   sig.result_no.zscore.annotate[[i]] = x
+# })
+
+names(sig.result.annotate) = names(sig.result.list)
+#names(sig.result_no.zscore.annotate) = names(sig.result.list_no.zscore)
+peakAnnoList <- lapply(sig.result.annotate, annotatePeak, TxDb=txdb,
+                       tssRegion=c(-3000, 3000), verbose=FALSE)
+plotAnnoBar(peakAnnoList)
+
+peakAnno1 <- annotatePeak(sig.result.annotate$h.APAD.highpum, TxDb=txdb,tssRegion=c(-3000, 3000), verbose=FALSE)
+peakAnno2 <- annotatePeak(sig.result.annotate$h.APAD.lowpum, TxDb=txdb,tssRegion=c(-3000, 3000), verbose=FALSE)
+peakAnno3 <- annotatePeak(sig.result.annotate$k.APAD.pum, TxDb=txdb,tssRegion=c(-3000, 3000), verbose=FALSE)
+peakAnno4 <- annotatePeak(sig.result.annotate$h.APAD.highlsd, TxDb=txdb,tssRegion=c(-3000, 3000), verbose=FALSE)
+peakAnno5 <- annotatePeak(sig.result.annotate$h.APAD.lowlsd, TxDb=txdb,tssRegion=c(-3000, 3000), verbose=FALSE)
+peakAnno6 <- annotatePeak(sig.result.annotate$k.APAD.lsd, TxDb=txdb,tssRegion=c(-3000, 3000), verbose=FALSE)
+
+# Combine into a named list
+peakAnnoList_reorder <- list(
+  "HEK29T.APAD.highPUM2" = peakAnno1,
+  "HEK29T.APAD.lowPUM2"  = peakAnno2,
+  "K562.APAD.PUM2"     = peakAnno3,
+  "HEK29T.APAD.highLSD1" = peakAnno4,
+  "HEK29T.APAD.lowLSD1"  = peakAnno5,
+  "HEK29T.APAD.LSD1"     = peakAnno6
+)
+plotAnnoBar(peakAnnoList_reorder)
+```
+
+```{R}
+lapply(sig.result.annotate,length)
+
+```
+```{r}
+library(UpSetR)
+high_pum <- unique(sig.result.annotate$h.APAD.highpum$symbol)
+low_pum <- unique(sig.result.annotate$h.APAD.lowpum$symbol)
+k_pum <- unique(sig.result.annotate$k.APAD.pum$symbol)
+
+# Create a named list for UpSetR input
+symbol_list <- list(
+  HEK29T.highPUM2 = high_pum,
+  HEK29T.lowPUM2 = low_pum,
+  K562.PUM2 = k_pum
+)
+
+# Convert to an UpSetR-compatible data frame
+upset_data <- fromList(symbol_list)
+
+upset(upset_data, 
+      sets = c("HEK29T.highPUM2", "HEK29T.lowPUM2", "K562.PUM2"),
+      order.by = "freq", 
+      main.bar.color = "steelblue", 
+      sets.bar.color = "lightblue",
+      keep.order = TRUE)
+
+```
+```{r}
+h.highlsd <- sig.result.annotate$h.APAD.highlsd$symbol
+h.lowlsd = sig.result.annotate$h.APAD.lowlsd$symbol
+k.lsd = sig.result.annotate$k.APAD.lsd$symbol
+
+
+# Create a named list for UpSetR input
+symbol_list <- list(
+  HEK29T.highLSD1 = unique(h.highlsd),
+  HEK29T.lowLSD1 = unique(h.lowlsd),
+  K562.LSD1 = unique(k.lsd)
+)
+
+# Convert to an UpSetR-compatible data frame
+upset_data <- fromList(symbol_list)
+
+upset(upset_data, 
+      sets = c("HEK29T.highLSD1", "HEK29T.lowLSD1", "K562.LSD1"),
+      order.by = "freq", 
+      main.bar.color = "steelblue", 
+      sets.bar.color = "lightblue",
+      keep.order = TRUE,
+      nintersects = NA)
+
+
+
+```
+```{R}
+#sig.result_no.zscore.annotate
+#sig.result.annotation
+names(sig.result_no.zscore.annotate) = names(sig.result.annotate)
+as.data.frame(sig.result.annotate$h.APAD.highlsd)
+as.data.frame(sig.result.annotate$k.APAD.lsd)
+as.data.frame(sig.result_no.zscore.annotate$h.APAD.highlsd)
+as.data.frame(sig.result_no.zscore.annotate$k.APAD.lsd)
+
+seqnames <- c("chr12", "chr5", "chr17","chr1","chr7","chr7","chr1",
+              "chr7","chr7","chr15","chr5","chr6") 
+#140,537,340-140,558,093
+#chr17:72,221,072-72,640,472
+#chr1:47,432,132-47,435,549
+#chr7:27,184,507-27,189,298
+#chr7:27,198,574-27,207,757
+#chr1:159,958,035-160,022,889
+#chr7:122,303,658-122,314,516
+#chr7:27,107,777-27,139,583
+#chr15:98,645,118-98,651,222
+#chr5:142,317,619-142,318,322
+#chr6:41,452,490-41,548,670
+starts <- c(53962188, 140537340, 72221072,47432132,27184507,27198574,159958035,
+            122303658,27107777,98645118,142317619,41452490)  
+ends <- c(53974960, 140558093, 72640472,47435549,27189298,27207757,160022889,
+          122314516,27139583,98651222,142318322,41548670)   
+labels <- c("HOTAIR", "SRA1", "LINC00673","FOXD2-AS1","HOXA11-AS","HOTTIP","LINC01133",
+            "FEXF1-AS","HOXA-AS2","IRAIN","SPRY4-IT1","FOXP4-AS1")  
+
+multiple_regions <- GRanges(seqnames = seqnames,
+                            ranges = IRanges(start = starts, end = ends),
+                            label = labels)
+
+multiple_regions
+store = lapply(sig.result.annotate,as.data.frame)
+library(dplyr)
+
+sig.result.annotate.small = lapply(store, function(i) {
+  i[, c("seqnames", "start", "end", "score", "fold", "symbol")]
+})
+
+sig.result.annotate.small
+getwd()
+lapply(seq_along(sig.result.annotate.small), function(i) {
+  # Get the data frame
+  df <- sig.result.annotate.small[[i]]
+  title = names(sig.result.annotate.small)
+  # Create a file name based on the index or other identifier
+  file_name <- paste0("/mnt/pv_compute/yifan/LSD1_PIEseq/summary.sig.result/sig_result_", title[i], ".csv")
+  
+  # Write to CSV
+  write.csv(df, file_name, row.names = FALSE)
+})
+
+mcols(sig.result.annotate$h.APAD.lowlsd)
+
+
+
+```
+
+```{r}
+genes = lapply(peakAnnoList, function(i) as.data.frame(i)$geneId)
+names(genes) = sub("_", "\n", names(genes))
+library(clusterProfiler)
+compGO <- compareCluster(geneCluster   = genes,
+                          fun           = "enrichGO",
+                          pvalueCutoff  = 0.05,
+                          pAdjustMethod = "BH",
+                          OrgDb='org.Hs.eg.db')
+
+compKEGG <- compareCluster(geneCluster   = genes,
+                         fun           = "enrichKEGG",
+                          pvalueCutoff  = 0.05,
+                         pAdjustMethod = "BH")
+dotplot(compGO, showCategory = 5, title = "GO Enrichment Analysis")
+dotplot(compKEGG, showCategory = 5, title = "KEGG Pathway Enrichment Analysis")
+```
+```{r}
+
+top.genes_list <- lapply(sig.result.annotate, function(df) {
+
+  sorted_data <- df[order(-df$fold), ]
+
+  top.genes <- head(sorted_data, 100000)
+  #print(top.genes)
+  top.gene_names <- top.genes$symbol
+  
+  return(top.gene_names)
+})
+
+x <- Reduce(union, top.genes_list)
+
+```
+
+
+```{r}
+check_go_kegg = function(gene_symbols){
+  go <- enrichGO(gene          = gene_symbols,
+                    OrgDb         = org.Hs.eg.db,
+                    keyType       = "SYMBOL",
+                    ont           = "BP",
+                    pAdjustMethod = "BH",
+                    pvalueCutoff  = 0.05,
+                    qvalueCutoff  = 0.05,
+                    readable      = TRUE)
+  
+  gene_info <- getBM(
+    attributes = c("hgnc_symbol", "entrezgene_id"),
+    filters = "hgnc_symbol",
+    values = gene_symbols,
+    mart = ensembl)
+
+  gse_kegg <- enrichKEGG(gene = gene_info$entrezgene_id, 
+                  organism = "hsa", 
+                  keyType = "kegg",
+                  minGSSize = 3, 
+                  maxGSSize = 800, 
+                  pvalueCutoff = 0.05, 
+                  pAdjustMethod = "BH")
+
+  return(list(go, gse_kegg))
+}
+ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+k.lsd_enrich = check_go_kegg(sig.result.annotate$k.APAD.lsd$symbol)
+h.highlsd_enrich = check_go_kegg(sig.result.annotate$h.APAD.highlsd$symbol)
+h.lowlsd_enrich = check_go_kegg(sig.result.annotate$h.APAD.lowlsd$symbol)
+h.highpum_enrich = check_go_kegg(sig.result.annotate$h.APAD.highpum$symbol)
+h.lowpum_enrich = check_go_kegg(sig.result.annotate$h.APAD.lowpum$symbol)
+
+```
+
+```{r}
+write_fasta <- function(sequences, gr, path, file_name) {
+
+  names(sequences) <- paste0(seqnames(gr), ":", start(gr), "-", end(gr), "(", strand(gr), ")")
+  
+  if (any(duplicated(names(sequences)))) {
+
+    names(sequences) <- make.unique(names(sequences), sep = "_")
+  }
+  
+  writeXStringSet(sequences, filepath = paste0(path,file_name))
+}
+
+hg38_seq = BSgenome.Hsapiens.UCSC.hg38
+get_site_seq = function(site_gr, path, filename_list) {
+  x = site_gr
+  
+  gr_list = list() 
+  seq_list = list() 
+  
+  
+  # Flanking downstream sequences
+  downstream_CT <- flank(x[x$es_cond2_1 == "C->T"], width = 50, start = FALSE)
+  downstream_CT_seq = getSeq(hg38_seq, downstream_CT)
+
+  downstream_AG <- flank(x[x$es_cond2_1 == "A->G"], width = 50, start = FALSE)
+  downstream_AG_seq = getSeq(hg38_seq, downstream_AG)
+  
+  # Flanking upstream sequences
+  upstream_CT <- flank(x[x$es_cond2_1 == "C->T"], width = 50, start = TRUE)
+  upstream_CT_seq = getSeq(hg38_seq, upstream_CT)
+  
+  upstream_AG <- flank(x[x$es_cond2_1 == "A->G"], width = 50, start = TRUE)
+  upstream_AG_seq = getSeq(hg38_seq, upstream_AG)
+  
+  # Store the GRanges objects
+  gr_list[["down_ct"]] = downstream_CT
+  gr_list[["down_ag"]] = downstream_AG
+  gr_list[["up_ct"]] = upstream_CT 
+  gr_list[["up_ag"]] = upstream_AG
+  
+  # Store the sequences
+  seq_list[["down_ct"]] = downstream_CT_seq 
+  seq_list[["down_ag"]] = downstream_AG_seq 
+  seq_list[["up_ct"]] = upstream_CT_seq  
+  seq_list[["up_ag"]] = upstream_AG_seq  
+  
+  # Write sequences to FASTA files
+  for (i in seq_along(filename_list)) {
+    write_fasta(seq_list[[i]], gr_list[[i]], path,filename_list[i])
+  }
+  
+  return(list(gr_list, seq_list))
+}
+```
+#get site sequence
+```{r}
+path = "/mnt/pv_compute/yifan/LSD1_PIEseq/no_thres_editing.sites/es_seq/"
+filename_list = c("h.highpum.down_ct","h.highpum.down_ag","h.highpum.up_ct","h.highpum.up_ag")
+
+h.highpum_seq = get_site_seq(sig.result.annotate$h.APAD.highpum, path,filename_list)
+filename_list = c("h.lowpum.down_ct","h.lowpum.down_ag","h.lowpum.up_ct","h.lowpum.up_ag")
+
+h.lowpum_seq = get_site_seq(sig.result.annotate$h.APAD.lowpum, path,filename_list)
+filename_list = c("h.highlsd.down_ct","h.highlsd.down_ag","h.highlsd.up_ct","h.highlsd.up_ag")
+h.highlsd_seq = get_site_seq(sig.result.annotate$h.APAD.highlsd, path,filename_list)
+filename_list = c("h.lowlsd.down_ct","h.lowlsd.down_ag","h.lowlsd.up_ct","h.lowlsd.up_ag")
+h.lowlsd_seq = get_site_seq(sig.result.annotate$h.APAD.lowlsd, path,filename_list)
+filename_list = c("k.lsd.down_ct","k.lsd.down_ag","k.lsd.up_ct","k.lsd.up_ag")
+k.lsd_seq = get_site_seq(sig.result.annotate$k.APAD.lsd, path,filename_list)
+filename_list = c("k.pum.down_ct","k.pum.down_ag","k.pum.up_ct","k.pum.up_ag")
+k.pum_seq = get_site_seq(sig.result.annotate$k.APAD.pum, path,filename_list)
+
+```
+
+# get bg sequence
+```{r}
+h.bg = processed$h.none.apad
+h.bg_resize = resize(h.bg, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+h.bg_resize <- h.bg_resize[seqnames(h.bg_resize) %in% paste0("chr", c(1:22, "X", "Y"))]
+h.bg_resize_seq = getSeq(hg38_seq,h.bg_resize)
+write_fasta(h.bg_resize_seq,h.bg_resize,path,"h.bg.fasta")
+
+
+h.down.bg = flank(h.bg, width = 50, start = FALSE)
+#h.down.bg_resize = resize(h.down.bg, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+h.down.bg_resize <- h.down.bg[seqnames(h.down.bg) %in% paste0("chr", c(1:22, "X", "Y"))]
+h.down.bg_resize_seq = getSeq(hg38_seq,h.down.bg_resize)
+write_fasta(h.down.bg_resize_seq,h.down.bg_resize,path,"h.down.bg.fasta")
+
+h.up.bg = flank(h.bg, width = 50, start = TRUE)
+#h.up.bg_resize = resize(h.up.bg, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+h.up.bg_resize <- h.up.bg[seqnames(h.up.bg) %in% paste0("chr", c(1:22, "X", "Y"))]
+h.up.bg_resize_seq = getSeq(hg38_seq,h.up.bg_resize)
+write_fasta(h.up.bg_resize_seq,h.up.bg_resize,path,"h.up.bg.fasta")
+
+
+
+k.bg = processed$k.none.APAD
+#k.bg_resize = resize(k.bg, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+k.bg_resize <- k.bg[seqnames(k.bg) %in% paste0("chr", c(1:22, "X", "Y"))]
+k.bg_resize_seq = getSeq(hg38_seq,k.bg_resize)
+write_fasta(k.bg_resize_seq,k.bg_resize,path,"k.bg.fasta")
+
+k.down.bg = flank(k.bg, width = 50, start = FALSE)
+#k.down.bg_resize = resize(k.down.bg, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+k.down.bg_resize <- k.down.bg[seqnames(k.down.bg) %in% paste0("chr", c(1:22, "X", "Y"))]
+k.down.bg_resize_seq = getSeq(hg38_seq,k.down.bg_resize)
+write_fasta(k.down.bg_resize_seq,k.down.bg_resize,path,"k.down.bg.fasta")
+
+k.up.bg = flank(k.bg, width = 50, start = TRUE)
+#k.up.bg_resize = resize(k.up.bg, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+k.up.bg_resize <- k.up.bg[seqnames(k.up.bg) %in% paste0("chr", c(1:22, "X", "Y"))]
+k.up.bg_resize_seq = getSeq(hg38_seq,k.up.bg_resize)
+write_fasta(k.up.bg_resize_seq,k.up.bg_resize,path,"k.up.bg.fasta")
+```
+
+# get bg sequence2
+```{r}
+h.bg.ct = h.bg %>%
+  filter(es_cond2_1 == "C->T")
+
+h.bg.ag = h.bg %>%
+  filter(es_cond2_1 == "A->G")
+
+k.bg.ct = k.bg %>%
+  filter(es_cond2_1 == "C->T")
+
+k.bg.ag = k.bg %>%
+  filter(es_cond2_1 == "A->G")
+
+
+
+generate_downstream_fasta <- function(data, path, title) {
+  down_bg_ct <- flank(data, width = 50, start = FALSE)
+  down_bg_ct_resize <- down_bg_ct[seqnames(down_bg_ct) %in% paste0("chr", c(1:22, "X", "Y"))]
+  down_bg_ct_resize_seq <- getSeq(hg38_seq, down_bg_ct_resize)
+  write_fasta(down_bg_ct_resize_seq, down_bg_ct_resize,path,title)
+  cat("FASTA file generated at:", title, "\n")
+}
+
+
+
+generate_upstream_fasta <- function(data, path, title) {
+  up_bg_ct <- flank(data, width = 50, start = TRUE)
+  up_bg_ct_resize <- up_bg_ct[seqnames(up_bg_ct) %in% paste0("chr", c(1:22, "X", "Y"))]
+  up_bg_ct_resize_seq <- getSeq(hg38_seq, up_bg_ct_resize)
+  write_fasta(up_bg_ct_resize_seq, up_bg_ct_resize,path,title)
+  cat("FASTA file generated at:", title, "\n")
+}
+
+generate_downstream_fasta(h.bg.ct,path,"h.down.bg.ct.fasta")
+generate_downstream_fasta(h.bg.ag,path,"h.down.bg.ag.fasta")
+generate_downstream_fasta(k.bg.ct,path,"k.down.bg.ct.fasta")
+generate_downstream_fasta(k.bg.ag,path,"k.down.bg.ag.fasta")
+
+generate_upstream_fasta(h.bg.ct,path,"h.up.bg.ct.fasta")
+generate_upstream_fasta(h.bg.ag,path,"h.up.bg.ag.fasta")
+generate_upstream_fasta(k.bg.ct,path,"k.up.bg.ct.fasta")
+generate_upstream_fasta(k.bg.ag,path,"k.up.bg.ag.fasta")
+
+```
+
+```{r}
+plot_distribution = function(x, motif,title)
+  {expand = resize(x, width = 100 , fix = "center",use.names=TRUE, ignore.strand=FALSE)
+  expand_seq = getSeq(hg38_seq, expand)
+  
+  head(expand_seq)
+  
+  expand_rna_seq <- chartr("T", "U", as.character(expand_seq))
+  
+  if (is.null(names(expand))) {
+      names(expand) <- paste0("region_", seq_along(expand))
+  }
+  
+  names(expand_rna_seq) <- names(expand)
+  
+  motif <- RNAString(motif)
+  
+  motif_matches <- vmatchPattern(motif, RNAStringSet(expand_rna_seq))
+  
+  motif_start_positions <- unlist(start(motif_matches))
+  
+  sequence_names <- rep(names(expand_rna_seq), lengths(motif_matches))
+  
+  motif_data <- data.frame(
+    sequence_name = sequence_names,
+    motif_start = motif_start_positions
+  )
+  
+
+  
+  
+  motif_data$adjusted_motif_position <- motif_data$motif_start - 50
+  
+  
+  p = ggplot(motif_data, aes(x = adjusted_motif_position)) +
+    geom_histogram(binwidth = 1, fill = "blue", alpha = 0.7) +
+    geom_vline(xintercept = 0, color = "red", linetype = "dashed", linewidth = 1) +
+    labs(title = paste0("Distribution of ",title," Target Sites Flanking the ", motif),
+         x = "Position (First motif position = 0)",
+         y = "Number") +
+    theme_minimal()
+  print(p)
+  return(motif_data)
+}  
+
+```
+```{R}
+plot_distribution(sig.result.list$h.APAD.highpum,"UGUA","high PUM2 in Hek")
+plot_distribution(sig.result.list$h.APAD.lowpum, "UGUA", "low PUM2 in Hek")
+plot_distribution(sig.result.list$k.APAD.pum,"UGUA","PUM2 in K562")
+getwd()
+```
