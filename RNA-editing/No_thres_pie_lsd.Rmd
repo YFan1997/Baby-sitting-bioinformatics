@@ -1,5 +1,5 @@
 ```{r}
-setwd("/mnt/pv_compute/yifan/LSD1_PIEseq")
+#setwd("path/yourpath/")
 library(devtools)
 #install_github("dieterich-lab/JACUSA2helper", dependencies = TRUE, build_vignettes = TRUE)
 library(JACUSA2helper)
