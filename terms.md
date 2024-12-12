@@ -13,3 +13,6 @@ entire region of a gene, all the DNA sequences
 ## hybrid-binding domain
 specific region or part of a protein that has the ability to recognaize and bind to hybrid structure.
 
+## DMS for secondary structure
+DMS is dimethyl sulfate, a chemical reagent reacting with A and C in single-stranded, provides information to check which bases are involved in base-pairing which are exposed. After treating RNA sample with DMS, reverse transcription(RT) is used to map the pattern of the modification, as when RT enzyme encounters a modifed nucleotide (A or C), it will introduces a mutation at that position, can be detected by assay and sequencing.
+
