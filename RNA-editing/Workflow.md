@@ -104,5 +104,6 @@ bedtools intersect -v -a Empty.vs.PUM.all.editing.sites -b dbsnp_138.hg38.vcf.gz
 ## REMEMBER TO RE-ADD HEARDER for further analyze, seperate by tab
 #contig start   end name    score   strand  bases11 bases12 bases21 bases22 info    filter  ref
 ```
-The Markdown file is how to use JACUSA2 helper to further analyze the result, combine with GO and KEGG. apply to your processed result!
+The Markdown file is how to use JACUSA2 helper to further analyze the result, combine with GO and KEGG, that is published based on my lab's data, please adjust it and apply to your processed result!
+
 
