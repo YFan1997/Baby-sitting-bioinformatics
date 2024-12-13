@@ -1,21 +1,29 @@
-# DRIP-seq learning and analyze notes
-### Yifan
-## mechanism
-DRIP stands for DNA-RNA immunoprecipitation, by directly obtain the sequence of DNA, researchers can further investigate R-loop mapping in the genome.
+# CUT&RUN, CUT&Tag, and DRIP-seq
 
+In this section, rather than focusing on a single method, I will discuss these three techniques together to highlight their differences and similarities. I will also introduce how to analyze their raw data and interpret the results. Since all of these methods are conceptually based on ChIP-seq, if you are familiar with one, you will find it straightforward to work with the others. Otherwise, once you learn one method, you can easily apply the same principles to all of them.
 
-a monoclonal antibody, normally S9.6 antibody is usd to immunoprecipitate the R-loops, as this antibody could recognizes RNA-DNA hybrids,then non-specific DNA is washed away, leaving RNA-DNA enriched samples. By conducting amplification and standard library preparation, we can using sequencing to capature R-loops information in genome-wide. 
+## Mechanism
 
+**CUT&RUN (Cleavage Under Targets and Release Using Nuclease)**  
+In CUT&RUN, an antibody specific to a protein of interest is used in combination with a DNA-cleaving enzyme (often micrococcal nuclease). The enzyme binds to the antibody-protein-DNA complex and cuts the DNA near the labeled sites, releasing short DNA fragments.
 
-The sequencing data would go through the standard quality-check, alignment process, lastly conduct peak calling to identify regions of significant R-loop formation.
+**CUT&Tag (Cleavage Under Targets and Tagmentation)**  
+CUT&Tag employs a modified Tn5 transposase that can insert sequencing adapters (tagmentation) directly into the target DNA. This approach streamlines the library preparation process by simultaneously fragmenting and tagging the DNA, thus saving time.
 
-for the wet-lab protocol, this paper provide very helpful information:
-Sanz LA, Castillo-Guzman D, Chédin F. Mapping R-Loops and RNA:DNA Hybrids with S9.6-Based Immunoprecipitation Methods. J Vis Exp. 2021 Aug 24;(174):10.3791/62455. doi: 10.3791/62455. PMID: 34515688; PMCID: PMC9676068.
-https://pmc.ncbi.nlm.nih.gov/articles/PMC9676068/#S2
+**DRIP (DNA-RNA Immunoprecipitation)**  
+DRIP targets R-loop structures using the S9.6 antibody, which specifically recognizes RNA-DNA hybrids. After binding, these complexes are immunoprecipitated, enriching for DNA regions that contain R-loops.
 
-## data analysis
-for data analyzing, we may link with ChIP-seq concepts, as the inner logic is using cross-linking to capature an interaction, then ampliy, sequencing. 
-the step would start from quality control, alignment, peakcalling, and annotation and enrichment.
-Let's do together in the next section!
+### Commonality and Peak Calling
 
+All three methods rely on antibodies to enrich specific genomic regions, ultimately generating DNA sequencing data. The analysis involves identifying "peaks" where these antibodies have enriched certain genome intervals. Peak calling, a concept widely used in ChIP-seq, is also applied here to determine regions of significant enrichment.
 
+### Additional Resources
+
+For detailed wet-lab protocols, the following paper provides valuable information:
+
+- Sanz LA, Castillo-Guzman D, Chédin F. *Mapping R-Loops and RNA:DNA Hybrids with S9.6-Based Immunoprecipitation Methods.* J Vis Exp. 2021 Aug 24;(174):10.3791/62455.  
+  [https://pmc.ncbi.nlm.nih.gov/articles/PMC9676068/](https://pmc.ncbi.nlm.nih.gov/articles/PMC9676068/)
+
+## Data Analysis
+
+For data analysis, you can follow ChIP-seq concepts since the underlying logic is similar. Once you’re familiar with analyzing one method, you can apply the same principles—quality control, alignment, and peak calling—to the others.
