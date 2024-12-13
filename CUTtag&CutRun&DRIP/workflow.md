@@ -75,7 +75,7 @@ parallel "$trimmomatic SE -phred33 {}.fastq output.trimmed_{}.fastq SLIDINGWINDO
 ## first build index for mm10. mm10.fa can be downloaded from https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.fa.gz
 ## wget https://hgdownload.soe.ucsc.edu/goldenPath/mm10/bigZips/mm10.fa.gz
 ## for dm6: wget https://hgdownload.soe.ucsc.edu/goldenPath/dm6/bigZips/dm6.fa.gz
-## unzip by gunzip mm10.fa.gz etc.
+## unzip by gunzip mm10.fa.gz
 ## the dm6 is spikein genome, will be used for further normalization.
 
 
