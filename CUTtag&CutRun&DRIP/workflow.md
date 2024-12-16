@@ -202,7 +202,7 @@ mkdir -p result/bed
 
 # get mapped bam read to bed file, note here the read is single-read, so use bamtobed -i -; if is paried, used -i -bedpe
 
-nohup parallel "samtools view -b -F 4 bamout/{}_sorted.bam | bedtools bamtobed -i - > result/bed/{}.bed" :::: samplenames &
+nohup parallel "samtools view -b -F 4 result/rmdup/{}_rmDup.bam | bedtools bamtobed -i - > result/bed/{}.bed" :::: samplenames &
 
 # while it running, perpare scaling.factor file by nano, and paste the result from previous step, replace semicolon with tab
 
