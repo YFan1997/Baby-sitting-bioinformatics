@@ -1,8 +1,10 @@
-# CUT&RUN, CUT&Tag, and DRIP-seq
+# ChIp-seq, CUT&RUN, CUT&Tag, and DRIP-seq
 
 In this section, rather than focusing on a single method, I will discuss these three techniques together to highlight their differences and similarities. I will also introduce how to analyze their raw data and interpret the results. Since all of these methods are conceptually based on ChIP-seq, if you are familiar with one, you will find it straightforward to work with the others. Otherwise, once you learn one method, you can easily apply the same principles to all of them.
 
 ## Mechanism
+**ChIP (Chromatin Immunoprecipitation)**  
+A powerful technique used to study protein-DNA interactions on a genome-wide scale, isolates DNA fragments bound by a specific protein of interest. The workflow involves crosslinking proteins to DNA, shearing the chromatin, immunoprecipitating with an antibody specific to the target protein, and sequencing the recovered DNA fragments. we can consider the following methods are variants of ChIp-seq.
 
 **CUT&RUN (Cleavage Under Targets and Release Using Nuclease)**  
 In CUT&RUN, an antibody specific to a protein of interest is used in combination with a DNA-cleaving enzyme (often micrococcal nuclease). The enzyme binds to the antibody-protein-DNA complex and cuts the DNA near the labeled sites, releasing short DNA fragments.
@@ -15,7 +17,7 @@ DRIP targets R-loop structures using the S9.6 antibody, which specifically recog
 
 ### Commonality and Peak Calling
 
-All three methods rely on antibodies to enrich specific genomic regions, ultimately generating DNA sequencing data. The analysis involves identifying "peaks" where these antibodies have enriched certain genome intervals. Peak calling, a concept widely used in ChIP-seq, is also applied here to determine regions of significant enrichment.
+All methods rely on antibodies to enrich specific genomic regions, ultimately generating DNA sequencing data. The analysis involves identifying "peaks" where these antibodies have enriched certain genome intervals. Peak calling, a concept widely used in ChIP-seq, is also applied here to determine regions of significant enrichment.
 
 ### Additional Resources
 
@@ -99,11 +101,12 @@ nohup parallel "bwa mem -t 8 /mnt/Data1/HwangLab/Yifan/ref_genome/dm6.fa trimmed
 parallel "samtools view -bS samout/{}.sam > bamout/{}.bam" :::: samplenames
 parallel "samtools view -bS spikesam/{}.sam > spikebam/{}.bam" :::: samplenames
 
-## sort and index bam file
-parallel "samtools sort bamout/{}.bam -o bamout/{}_sorted.bam" :::: samplenames
+## sort by name and index bam file
+## sorting is important especially when convert bam to bed file, unsorted bam file will lose many information when convert to bed files.
+parallel "samtools sort -n bamout/{}.bam -o bamout/{}_sorted.bam" :::: samplenames
 parallel "samtools index bamout/{}_sorted.bam" :::: samplenames
 
-parallel "samtools sort spikebam/{}.bam -o spikebam/{}_sorted.bam" :::: samplenames
+parallel "samtools sort -n spikebam/{}.bam -o spikebam/{}_sorted.bam" :::: samplenames
 parallel "samtools index spikebam/{}_sorted.bam" :::: samplenames
 
 ## remove duplicate
@@ -205,15 +208,22 @@ mkdir -p result/bed
 nohup parallel "samtools view -b -F 4 result/rmdup/{}_rmDup.bam | bedtools bamtobed -i - > result/bed/{}.bed" :::: samplenames &
 
 # while it running, perpare scaling.factor file by nano, and paste the result from previous step, replace semicolon with tab
+# as they are single-reads, we can directly use bed file later, but for pair-ends reads, the fragments.bed needs to be prepared from the bed file. just cut the start and end from the bed.
+# cut -f 1,2,6,7 result/bed/{}.bed | sort -k1,1 -k2,2n -k3,3n  > result/bed/{}.bed/{}.fragments.bed
 
 # Read scaling factors and apply them
+## convert bed to bedgraph
+## mm10 chromsize:
+wget https://hgdownload.cse.ucsc.edu/goldenpath/mm10/bigZips/mm10.chrom.sizes
+mkdir -p result/bedgraph
 mkdir -p result/normalized_bed
 
 while read sample factor; do
-    awk -v scale=$factor 'BEGIN {OFS="\t"} {if (NF >= 5) $5 = $5 * scale; print}' \
-        result/bed/${sample}.bed > result/normalized_bed/${sample}_normalized.bed
+    echo $factor
+    bedtools genomecov -bg -scale 1/$factor \
+        -i result/bed/${sample}.bed \
+        -g mm10.chrom.sizes > result/bedgraph/${sample}_normalized.bedgraph
 done < scaling.factor
-
 
 ## let's do peakcalling
 ## here we using SEACR for narrow peak, which require bedgraph format
@@ -221,19 +231,6 @@ done < scaling.factor
 ## the other tools can also be used, such as MACS2
 
 mkdir -p result/peakcalling
-## convert bed to bedgraph
-## mm10 chromsize:
-wget https://hgdownload.cse.ucsc.edu/goldenpath/mm10/bigZips/mm10.chrom.sizes
-mkdir -p result/bedgraph
-
-## make sure the fragement is smaller than 1000
-parallel "awk '\$3-\$2 < 1000 {print \$0}' result/normalized_bed/{}_normalized.bed > result/bedgraph/{}.clean.bed" :::: samplenames
-
-## peak chr, start end signal information and sorted
-parallel "cut -f 1,2,3,5 result/bedgraph/{}.clean.bed | sort -k1,1 -k2,2n -k3,3n > result/bedgraph/{}.fragments.bed" :::: samplenames
-
-## convert bed to bedgraph based on mm10 chromosize
-parallel "bedtools genomecov -bg -i result/bedgraph/{}.fragments.bed -g mm10.chrom.sizes > result/bedgraph/{}.fragments.bedgraph" :::: samplenames
 
 ## apply SEACR
 $seacr="path/to/SEACR_1.3.sh"
